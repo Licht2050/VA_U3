@@ -1,0 +1,32 @@
+graph ClusterNodes {
+		graph [ dpi = 600 ]; 
+		rankdir=UD;
+		size="8,5";
+		node [shape = circle];
+	Philisoph0 -- Philisoph8
+	Philisoph0 -- Philisoph6
+	Philisoph0 -- Philisoph3
+	Philisoph1 -- Philisoph3
+	Philisoph1 -- Philisoph15
+	Philisoph1 -- Philisoph17
+	Philisoph10 -- Philisoph15
+	Philisoph10 -- Philisoph11
+	Philisoph12 -- Philisoph2
+	Philisoph12 -- Philisoph17
+	Philisoph12 -- Philisoph8
+	Philisoph4 -- Philisoph7
+	Philisoph4 -- Philisoph2
+	Philisoph4 -- Philisoph5
+	Philisoph5 -- Philisoph13
+	Philisoph6 -- Philisoph14
+	Philisoph6 -- Philisoph9
+	Philisoph6 -- Philisoph11
+	Philisoph7 -- Philisoph15
+	Philisoph7 -- Philisoph3
+	Philisoph7 -- Philisoph11
+	Philisoph7 -- Philisoph8
+	Philisoph11 -- Philisoph16
+	Philisoph11 -- Philisoph2
+	Philisoph2 -- Philisoph15
+	Philisoph8 -- Philisoph16
+}
