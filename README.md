@@ -1,6 +1,4 @@
-# VAA_Uebung2
-
-# VAA_Uebung1
+# VAA_Uebung3
 
 
 - The following program start a cluster with master and n worker nodes(Philisoph"$n")
