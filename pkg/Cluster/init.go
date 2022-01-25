@@ -288,6 +288,10 @@ func ricart_agrawala_handling(ml *memberlist.Memberlist, sd *SyncerDelegate) {
 	sd.LamportTime.Increment()
 
 	sd.SendMesgToList(temp, req_accountAccess)
+	for _, m := range temp {
+		fmt.Printf("Ricard Agrawala send to: %s and lamport time: %d", m.Name, sd.LamportTime)
+	}
+
 }
 
 func readNeighbours_from_file(ml *memberlist.Memberlist, sd SyncerDelegate) {
