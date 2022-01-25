@@ -35,6 +35,7 @@ const (
 	Read_Neighbours_From_DotFile
 	Pars_Random_DiGraph_PNG
 	Pars_Random_UnDiGraph_PNG
+	Ricart_And_Agrawala
 	Default
 )
 
@@ -44,6 +45,7 @@ const (
 	ELECTION_ECHO_MESSAGE
 	NEIGHBOUR_INFO_MESSAGE
 	APPOINTMENT_MESSAGE
+	REQUEST_ACCOUNT_ACCESS
 )
 
 const (
@@ -68,6 +70,7 @@ func Menu() {
 	fmt.Println("9. Read neighbour from gv.dot file")
 	fmt.Println("10. Parse Random genereted DirectGraph to PNG file")
 	fmt.Println("11. Parse Random genereted UnDirectGraph to PNG file")
+	fmt.Println("12. Ricart and Agrawala Algorithm")
 }
 
 type Error_And_Msg struct {

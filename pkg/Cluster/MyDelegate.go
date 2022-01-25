@@ -5,6 +5,7 @@ import (
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Graph"
 	"VAA_Uebung1/pkg/Neighbour"
+	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -42,6 +43,9 @@ type SyncerDelegate struct {
 	Chanel               *chan Message
 	//Account
 	Account *Bank.Account
+	//Ricart and Agrawala Algorithm
+	LamportTime       *RicartAndAgrawala.LamportClock
+	R_And_Agra_Algrth *RicartAndAgrawala.RicartAndAgrawala
 }
 
 //compare the incoming byte message to structs
@@ -65,6 +69,9 @@ func CompareJson(msg []byte) int {
 		}
 		if key == "appointment_time" {
 			return APPOINTMENT_MESSAGE
+		}
+		if key == "lamport_time" {
+			return REQUEST_ACCOUNT_ACCESS
 		}
 	}
 	return MESSAGE
@@ -94,7 +101,18 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		//MasterNode recieve's neighbours from every node in the cluster afther any update occurred
 		//afther recieved the message it will insert nodes and their neighbour's in to "NodesAndNeighbours" list
 		neighbour_info_message_handling(sd, msg)
+
+	case REQUEST_ACCOUNT_ACCESS:
+		request_account_access(msg, sd)
 	}
+}
+
+func request_account_access(msg []byte, sd *SyncerDelegate) {
+	reqAA := RicartAndAgrawala.RequesAccountAccess{}
+	err := json.Unmarshal(msg, &reqAA)
+	_ = err
+
+	fmt.Println("Message Recieved Lamport Time : ", reqAA.Sender)
 }
 
 func appointment_Handling(msg []byte, sd *SyncerDelegate) {

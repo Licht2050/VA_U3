@@ -8,9 +8,9 @@ import (
 )
 
 type RequesAccountAccess struct {
-	Time    *LamportClock
-	Sender  *memberlist.Node
-	Account *Bank.Account
+	Time    *LamportClock    `json:"lamport_time"`
+	Sender  *memberlist.Node `json:"req_ac_access_sender"`
+	Account *Bank.Account    `json:"account"`
 }
 
 type RicartAndAgrawala struct {
@@ -20,7 +20,15 @@ type RicartAndAgrawala struct {
 	AskedResource     *Bank.Account
 }
 
-func New() *RicartAndAgrawala {
+func New_RequesAccountAccess(time LamportClock,
+	sender memberlist.Node, account Bank.Account) *RequesAccountAccess {
+
+	return &RequesAccountAccess{Time: &time,
+		Sender:  &sender,
+		Account: &account}
+}
+
+func New_R_and_A_Algrthm() *RicartAndAgrawala {
 	return &RicartAndAgrawala{RequestQueue: list.New()}
 }
 

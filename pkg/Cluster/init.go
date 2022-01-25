@@ -6,6 +6,7 @@ import (
 	"VAA_Uebung1/pkg/Exception"
 	"VAA_Uebung1/pkg/Graph"
 	"VAA_Uebung1/pkg/Neighbour"
+	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 
 	"encoding/base64"
 	"encoding/json"
@@ -99,6 +100,10 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 	//Account
 	bank_account := create_Account(ml.LocalNode())
 
+	//Ricart And Agrawala Algorithm
+	lamportClock := RicartAndAgrawala.NewLamportClock()
+	r_and_agra_algrthm := RicartAndAgrawala.New_R_and_A_Algrthm()
+
 	//register all var to syncerdelegate
 	sd := &SyncerDelegate{
 		Node: ml, Neighbours: neigbours, NeighbourNum: &neigbourNum,
@@ -119,6 +124,8 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 		Chanel:               &test,
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
 		Account:              bank_account,
+		LamportTime:          lamportClock,
+		R_And_Agra_Algrth:    r_and_agra_algrthm,
 	}
 
 	config.Delegate = sd
@@ -263,8 +270,24 @@ func userInput(ml *memberlist.Memberlist, g *Graph.Graph,
 		fmt.Println(g.String())
 		parseDiGToPNG(&g)
 
+	case Ricart_And_Agrawala:
+		ricart_agrawala_handling(ml, &sd)
 	}
 
+}
+
+func ricart_agrawala_handling(ml *memberlist.Memberlist, sd *SyncerDelegate) {
+	candidates_Number := 1
+	temp := make(map[string]memberlist.Node)
+
+	ChooseRandom_ClusterMembers(&candidates_Number, *ml, temp)
+
+	req_accountAccess := RicartAndAgrawala.New_RequesAccountAccess(
+		*sd.LamportTime, *sd.LocalNode, *sd.Account,
+	)
+	sd.LamportTime.Increment()
+
+	sd.SendMesgToList(temp, req_accountAccess)
 }
 
 func readNeighbours_from_file(ml *memberlist.Memberlist, sd SyncerDelegate) {

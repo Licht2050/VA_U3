@@ -3,6 +3,7 @@ package Cluster
 import (
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Neighbour"
+	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 	"encoding/base64"
 	"io/ioutil"
 	"log"
@@ -75,6 +76,10 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 	//Appointment
 	appointment := Appointment{}
 
+	//Ricart And Agrawala Algorithm
+	lamportClock := RicartAndAgrawala.NewLamportClock()
+	r_and_agra_algrthm := RicartAndAgrawala.New_R_and_A_Algrthm()
+
 	appointment_Protocol := CreateAppointmentProtocol(*ml.LocalNode(), A_MAX, AVAILABLE_Appointment)
 	cluster_appointment_Protocol := CreateAppointmentProtocol(*ml.LocalNode(), 0, AVAILABLE_Appointment)
 
@@ -102,6 +107,8 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 		Chanel:               &test,
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
 		Account:              bank_account,
+		LamportTime:          lamportClock,
+		R_And_Agra_Algrth:    r_and_agra_algrthm,
 	}
 
 	config.Delegate = sd
