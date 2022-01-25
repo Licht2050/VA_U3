@@ -83,6 +83,8 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 
 	test := make(chan Message, 1)
 
+	bank_account := create_Account(ml.LocalNode())
+
 	sd := &SyncerDelegate{
 		Node: ml, Neighbours: neigbours, NeighbourNum: &neigbourNum,
 		NodeList: nodeList, MasterNode: masterNode,
@@ -99,6 +101,7 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 		Double_Counting2:     &doubleCounting2,
 		Chanel:               &test,
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
+		Account:              bank_account,
 	}
 
 	config.Delegate = sd

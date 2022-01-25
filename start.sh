@@ -23,7 +23,7 @@ function start_cluster_node () {
         echo "joint startet: $5"
         command gnome-terminal --tab --title=$2  -- /bin/bash -c \
             "./$CLUSTER_START_FILE join \--node-name=$2 --known-ip=$3 \
-            --cluster-key=$4 --bind-port=$5 --http-port=$6; bash"
+            --cluster-key=$4 --bind-port=$5 --http-port=$6"
         # command ./$CLUSTER_START_FILE $1 --node-name=$2 --known-ip=$3 \
             #--cluster-key=$4 --bind-port=$5 --http-port=$6 >output.txt 2>&1  &
     fi

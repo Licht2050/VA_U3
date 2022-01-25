@@ -1,6 +1,7 @@
 package Cluster
 
 import (
+	"VAA_Uebung1/pkg/Cluster/Bank"
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Exception"
 	"VAA_Uebung1/pkg/Graph"
@@ -26,6 +27,7 @@ import (
 var file = "mygraph.dot"
 var AVAILABLE_Appointment = []int{10, 13, 14, 15, 16, 17}
 var A_MAX = 3
+var AC_BALANCE_MAX = 100000
 
 /**Bei Initieren einer Cluster wird:
  *Ein TCP-Port mit der Hilfe von memberlist "PKG" geoeffnet
@@ -94,6 +96,9 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 
 	test := make(chan Message, 1)
 
+	//Account
+	bank_account := create_Account(ml.LocalNode())
+
 	//register all var to syncerdelegate
 	sd := &SyncerDelegate{
 		Node: ml, Neighbours: neigbours, NeighbourNum: &neigbourNum,
@@ -113,6 +118,7 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 		Double_Counting2:     &doubleCounting2,
 		Chanel:               &test,
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
+		Account:              bank_account,
 	}
 
 	config.Delegate = sd
@@ -169,6 +175,18 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 	// 	err_st.Err = err
 	// 	Check(err_st)
 	// }
+}
+
+//this create account, randomly charge the account balance and return pointer.
+func create_Account(account_holder *memberlist.Node) *Bank.Account {
+	//account created with 0 amount
+	bank_account := Bank.NewAccount(*account_holder, 0)
+
+	//created amount will charg with a random amount between 0 and $AC_BALANCE_MAX
+	bank_account.Add_Rand_Ammount(AC_BALANCE_MAX)
+	fmt.Println("Start account balance: ", bank_account.Get_Balance())
+
+	return bank_account
 }
 
 func print_all_nodes(ml *memberlist.Memberlist) {

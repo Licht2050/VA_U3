@@ -1,6 +1,7 @@
 package Cluster
 
 import (
+	"VAA_Uebung1/pkg/Cluster/Bank"
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Graph"
 	"VAA_Uebung1/pkg/Neighbour"
@@ -39,6 +40,8 @@ type SyncerDelegate struct {
 	Double_Counting1     *int
 	Double_Counting2     *int
 	Chanel               *chan Message
+	//Account
+	Account *Bank.Account
 }
 
 //compare the incoming byte message to structs
@@ -255,9 +258,9 @@ func echo_message_handling(msg []byte, sd *SyncerDelegate) {
 				msg := Message{Msg: "Iam_the_Coordinator", Snder: sd.Node.LocalNode().Name}
 				Inform_Cluster_Node(*sd.EchoMessage, *sd, msg)
 				time.Sleep(2 * time.Second)
-				Inform_Appointment_Process_Starter(sd)
 
-				go TestChannel(*sd.Chanel, sd)
+				// Inform_Appointment_Process_Starter(sd)
+				// go TestChannel(*sd.Chanel, sd)
 
 			}
 		}
@@ -359,6 +362,7 @@ func Inform_Cluster_Node(echo Election.Echo, sd SyncerDelegate, msg Message) {
 	// apnt := Appointment{}
 	// apnt.Create_Available_Time(11, *sd.LocalNode)
 	for _, sender := range echo.EchoSenderList {
+		fmt.Println("Echo Send To: ", sender.Name)
 		sd.SendMesgToMember(*sender, msg)
 		// sd.SendMesgToMember(*sender, apnt)
 	}
@@ -720,7 +724,7 @@ func (sd *SyncerDelegate) SendMesgToMember(node memberlist.Node, value interface
 	Check(error_and_msg)
 
 	sd.Node.SendBestEffort(&node, body)
-	fmt.Println("Echo Send To: ", node.Name)
+	// fmt.Println("Msg Send To: ", node.Name)
 
 }
 
