@@ -1,36 +1,33 @@
 package RicartAndAgrawala
 
-import (
-	"sync/atomic"
-)
-
 type LamportClock struct {
-	lamport_time uint64
+	Lamport_time int
 }
 
 func NewLamportClock() *LamportClock {
-	return &LamportClock{lamport_time: 0}
+	return &LamportClock{Lamport_time: 0}
 }
 
 //Return the current value of the lamport clock
-func (lc *LamportClock) GetTime() uint64 {
-	return lc.lamport_time
+func (lc *LamportClock) GetTime() int {
+	return lc.Lamport_time
 }
 
 // Increment is used to increment and return the value of the lamport clock
-func (l *LamportClock) Increment() uint64 {
-	return atomic.AddUint64(&l.lamport_time, 1)
+func (l *LamportClock) Increment() int {
+	l.Lamport_time++
+	return l.Lamport_time
 }
 
 //This updates the local clock if necessary after
 //a clock value received from another process
-func (lc *LamportClock) Update(v uint64) {
-	// If the other value is old, we do not need to do anything
-	cur := atomic.LoadUint64(&lc.lamport_time)
-	other := uint64(v)
-	if other < cur {
-		return
+func (lc *LamportClock) Update(v int) bool {
+	// If the param value is less then local, we do not need to do anything
+	if v < lc.Lamport_time {
+		return false
 	}
 
-	atomic.SwapUint64(&lc.lamport_time, other+1)
+	lc.Lamport_time = v + 1
+
+	return true
 }

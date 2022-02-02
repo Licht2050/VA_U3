@@ -271,27 +271,20 @@ func userInput(ml *memberlist.Memberlist, g *Graph.Graph,
 		parseDiGToPNG(&g)
 
 	case Ricart_And_Agrawala:
-		ricart_agrawala_handling(ml, &sd)
+		ricart_agrawala_handling(&sd)
 	}
 
 }
 
-func ricart_agrawala_handling(ml *memberlist.Memberlist, sd *SyncerDelegate) {
-	candidates_Number := 1
-	temp := make(map[string]memberlist.Node)
+func ricart_agrawala_handling(sd *SyncerDelegate) {
 
-	ChooseRandom_ClusterMembers(&candidates_Number, *ml, temp)
+	// Star_Account_Access_Process(sd)
+	msg := Message{Msg: "Start_Req_Critical_Section"}
 
-	req_accountAccess := RicartAndAgrawala.New_RequesAccountAccess(
-		*sd.LamportTime, *sd.LocalNode, *sd.Account,
-	)
-	sd.LamportTime.Increment()
+	BroadcastClusterMessage(sd.Node, &msg)
+	sd.Node.UpdateNode(time.Millisecond * 2)
 
-	sd.SendMesgToList(temp, req_accountAccess)
-	for _, m := range temp {
-		fmt.Printf("Ricard Agrawala send to: %s and lamport time: %d", m.Name, sd.LamportTime)
-	}
-
+	println("--------------------------------All Nodes Will start the Critical Section Access Process--------------------------------")
 }
 
 func readNeighbours_from_file(ml *memberlist.Memberlist, sd SyncerDelegate) {

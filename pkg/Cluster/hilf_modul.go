@@ -3,8 +3,10 @@ package Cluster
 import (
 	"VAA_Uebung1/pkg/Exception"
 	"VAA_Uebung1/pkg/Neighbour"
+	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 	"bufio"
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -46,6 +48,7 @@ const (
 	NEIGHBOUR_INFO_MESSAGE
 	APPOINTMENT_MESSAGE
 	REQUEST_ACCOUNT_ACCESS
+	ACCESS_ACCOUNT_ACKNOWLEDGE
 )
 
 const (
@@ -162,4 +165,37 @@ func PassSlicetoMap(ml memberlist.Memberlist, memberMap map[string]memberlist.No
 	for _, node := range ml.Members() {
 		memberMap[node.Name] = *node
 	}
+}
+
+func Star_Account_Access_Process(sd *SyncerDelegate) {
+	// temp := make(map[string]memberlist.Node)
+
+	// candidates_Number := 1
+	// ChooseRandom_ClusterMembers(&candidates_Number, *ml, temp)
+
+	sd.LamportTime.Increment()
+	sd.LamportTime.Increment()
+	req_accountAccess := RicartAndAgrawala.New_RequesAccountAccess(
+		*sd.LamportTime, *sd.LocalNode, *sd.Account,
+	)
+	sd.R_And_Agra_Algrth.Interested_Resource = sd.Account
+
+	for _, m := range sd.Node.Members() {
+		if m.Name != sd.LocalNode.Name {
+			sd.SendMesgToMember(*m, req_accountAccess)
+			sd.R_And_Agra_Algrth.Add_Ack_Waited_Queue(*m)
+			fmt.Printf("Ricard Agrawala send to: %s and lamport time: %d\n", m.Name, *sd.LamportTime)
+		}
+	}
+}
+
+func Account_Access_Channel(ch chan Message, sd *SyncerDelegate) {
+
+	sleepTime := rand.Intn(3)
+
+	time.Sleep(time.Duration(sleepTime) * time.Second)
+
+	fmt.Printf("--------------------------Start to send Account Access Request after \"%d Seconds\"--------------------------\n", sleepTime)
+	Star_Account_Access_Process(sd)
+
 }

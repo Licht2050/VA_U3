@@ -73,6 +73,9 @@ func CompareJson(msg []byte) int {
 		if key == "lamport_time" {
 			return REQUEST_ACCOUNT_ACCESS
 		}
+		if key == "ack_status" {
+			return ACCESS_ACCOUNT_ACKNOWLEDGE
+		}
 	}
 	return MESSAGE
 }
@@ -103,16 +106,108 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		neighbour_info_message_handling(sd, msg)
 
 	case REQUEST_ACCOUNT_ACCESS:
+		sd.LamportTime.Increment()
 		request_account_access(msg, sd)
+	case ACCESS_ACCOUNT_ACKNOWLEDGE:
+		recieved_access_acknowledge(msg, sd)
 	}
+}
+
+func recieved_access_acknowledge(msg []byte, sd *SyncerDelegate) {
+	ackAA := RicartAndAgrawala.AccountAccess_Acknowledge{}
+	err := json.Unmarshal(msg, &ackAA)
+	_ = err
+	fmt.Printf("------------------------------Acknowledge Recieved from : \"%s Sender Time: %d\"------------------------------\n", ackAA.Ack_Sender.Name, ackAA.Ack_Sender_Time.GetTime())
+	acknowledge_Handling(ackAA, sd)
+}
+
+//Acknowledge handling Funcktion
+func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *SyncerDelegate) {
+	if sd.R_And_Agra_Algrth.Interested_Resource_isEmpty() {
+		return
+	}
+
+	// for _, m := range sd.R_And_Agra_Algrth.Ack_Waited_Queue {
+	// 	fmt.Printf("The Acknowledge Reciever in Que: %s\n", m.Name)
+	// }
+
+	//check if the recieved acknowledge match to interested account
+	if ack.ReqAA.Account_Holder.Name == sd.R_And_Agra_Algrth.Interested_Resource.Account_Holder.Name {
+
+		//check if the reciever could remove from the Ack_Waited_Queue
+		if sd.R_And_Agra_Algrth.Remove_From_Ack_Waited_Queue(ack.Ack_Sender) {
+
+			if len(sd.R_And_Agra_Algrth.Ack_Waited_Queue) == 0 {
+				fmt.Printf("The Acknowledge is succesfully recieved from all members\n")
+			}
+		}
+	}
+
 }
 
 func request_account_access(msg []byte, sd *SyncerDelegate) {
 	reqAA := RicartAndAgrawala.RequesAccountAccess{}
 	err := json.Unmarshal(msg, &reqAA)
 	_ = err
+	fmt.Printf("------------------------------Request Recieved from : \"%s  Sender Time: %d\"------------------------------\n", reqAA.Sender, reqAA.Req_Sender_Time.GetTime())
+	account_access_handling(reqAA, sd)
+}
 
-	fmt.Println("Message Recieved Lamport Time : ", reqAA.Sender)
+//Send Acknowledge to Request for Account Access
+func send_AcA_Acknowledge(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+	status := "Ok"
+	ack := RicartAndAgrawala.New_AccountAccess_Acknowledge(*req.Account, *sd.LamportTime, *sd.LocalNode, status)
+	fmt.Printf("\t\t\t\t\t\tAcknowledge Send To: \"%s\", for Access to \"%s's\" Accounts\n\n", req.Sender.Name, req.Account.Account_Holder.Name)
+	sd.SendMesgToMember(*req.Sender, ack)
+}
+
+//Request handling
+func account_access_handling(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+
+	// sd.R_And_Agra_Algrth.Interested_Resource = req.Account
+
+	//if not interested and currently not using the critical resources, then send acknowledgement.
+	if !(sd.R_And_Agra_Algrth.Is_CurrentlyUsing(*req.Account) || sd.R_And_Agra_Algrth.Is_Interested(*req.Account)) {
+		if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
+			fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
+		}
+
+		fmt.Printf("\n\t\t\t\t\t\tNot Interested And Not Currently Using\n")
+		send_AcA_Acknowledge(req, sd)
+
+		return
+
+	} else if sd.R_And_Agra_Algrth.Is_CurrentlyUsing(*req.Account) {
+		fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because CurrentlyUsing\n")
+		sd.R_And_Agra_Algrth.AddRequestToQueue(req)
+		fmt.Println(sd.R_And_Agra_Algrth.Queue_toString())
+
+	} else if sd.R_And_Agra_Algrth.Is_Interested(*req.Account) {
+		//if requested sender time is less than local time, then should queue the request
+		if req.Req_Sender_Time.GetTime() < sd.LamportTime.GetTime() {
+			if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
+				fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
+			}
+
+			fmt.Printf("\n\t\t\t\t\t\tAcknowledge Send, Because The Sender Time \"%d < %d\" Local Time\n",
+				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+			)
+			send_AcA_Acknowledge(req, sd)
+
+			return
+
+		} else {
+			fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because The Sender Time \"%d > %d\" Local Time\n",
+				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+			)
+			sd.R_And_Agra_Algrth.AddRequestToQueue(req)
+			fmt.Println(sd.R_And_Agra_Algrth.Queue_toString())
+		}
+	}
+
+	if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
+		fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
+	}
 }
 
 func appointment_Handling(msg []byte, sd *SyncerDelegate) {
@@ -532,6 +627,10 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 			appointment.Message.Msg = "Double_Counting_Alg2"
 			sd.SendMesgToMember(*sd.ElectionExplorer.Initiator, appointment)
 		}
+
+	case "Start_Req_Critical_Section":
+		//Criticle Section Access Request
+		Account_Access_Channel(*sd.Chanel, sd)
 	}
 
 }
