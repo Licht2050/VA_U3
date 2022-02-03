@@ -22,11 +22,13 @@ type AccountAccess_Acknowledge struct {
 }
 
 type RicartAndAgrawala struct {
-	RequestQueue        *list.List
-	CurrentlyUsingR     *Bank.Account
-	RequestedResource   *Bank.Account
-	Interested_Resource *Bank.Account
-	Ack_Waited_Queue    map[string]memberlist.Node
+	RequestQueue         *list.List
+	CurrentlyUsingR      *Bank.Account
+	Interested_Resource1 *Bank.Account
+	Interested_Resource2 *Bank.Account
+	Ack_Waited_Queue     map[string]memberlist.Node
+	AccInformation       bool
+	Operation_Ack        bool
 }
 
 func (ra *RicartAndAgrawala) Add_Ack_Waited_Queue(req_reciever memberlist.Node) {
@@ -48,27 +50,44 @@ func (ra *RicartAndAgrawala) Remove_From_Ack_Waited_Queue(ack_sender memberlist.
 }
 
 func (ra *RicartAndAgrawala) Interested_Resource_isEmpty() bool {
-	return (ra.Interested_Resource == nil)
+	return (ra.Interested_Resource2 == nil)
 }
 
 func (ra *RicartAndAgrawala) CurrentlyUnsingR_isEmpty() bool {
 	return (ra.CurrentlyUsingR == nil)
 }
 
-func (ra *RicartAndAgrawala) Is_CurrentlyUsing(reqAccount Bank.Account) bool {
+func (ra *RicartAndAgrawala) Is_CurrentlyUsing(reqAccount1 Bank.Account, reqAccount2 Bank.Account) bool {
 	if ra.CurrentlyUnsingR_isEmpty() {
 		return false
 	}
 
-	return ra.CurrentlyUsingR.Account_Holder.Name == reqAccount.Account_Holder.Name
+	//check for resource2
+	if ra.CurrentlyUsingR.Account_Holder.Name == reqAccount2.Account_Holder.Name ||
+		ra.Interested_Resource1.Account_Holder.Name == reqAccount2.Account_Holder.Name {
+		return true
+	}
+	//check for resource1
+	return ra.CurrentlyUsingR.Account_Holder.Name == reqAccount1.Account_Holder.Name ||
+		ra.Interested_Resource1.Account_Holder.Name == reqAccount1.Account_Holder.Name
+
 }
 
-func (ra *RicartAndAgrawala) Is_Interested(reqAccount Bank.Account) bool {
+func (ra *RicartAndAgrawala) Is_Interested(reqAccount1 Bank.Account, reqAccount2 Bank.Account) bool {
+
 	if ra.Interested_Resource_isEmpty() {
 		return false
 	}
 
-	return ra.Interested_Resource.Account_Holder.Name == reqAccount.Account_Holder.Name
+	//check for resource2
+	if ra.Interested_Resource2.Account_Holder.Name == reqAccount2.Account_Holder.Name ||
+		ra.Interested_Resource1.Account_Holder.Name == reqAccount2.Account_Holder.Name {
+		return true
+	}
+
+	//check for resource1
+	return ra.Interested_Resource2.Account_Holder.Name == reqAccount1.Account_Holder.Name ||
+		ra.Interested_Resource1.Account_Holder.Name == reqAccount1.Account_Holder.Name
 }
 
 func New_AccountAccess_Acknowledge(reqAC Bank.Account, ack_sender_time LamportClock,

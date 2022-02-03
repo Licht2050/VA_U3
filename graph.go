@@ -50,30 +50,37 @@ func contain(queue *list.List, lc LamportClock) (bool, *LamportClock) {
 }
 
 func main() {
-	lc := NewLamportClock()
-	lc1 := NewLamportClock()
+	// lc := NewLamportClock()
+	// lc1 := NewLamportClock()
 
-	lc1.Increment()
-	lc1.Increment()
+	// lc1.Increment()
+	// lc1.Increment()
 
-	fmt.Println(lc.GetTime())
+	// fmt.Println(lc.GetTime())
 
-	lc.Update(lc1.GetTime())
-	fmt.Println(lc.GetTime())
+	// lc.Update(lc1.GetTime())
+	// fmt.Println(lc.GetTime())
 
-	queue := list.New()
+	// queue := list.New()
 
-	queue.PushBack(*lc)
-	queue.PushBack(*lc1)
+	// queue.PushBack(*lc)
+	// queue.PushBack(*lc1)
 
-	// fmt.Println(contain(queue, *lc1))
-	// queue.PushBack(lc1)
+	// // fmt.Println(contain(queue, *lc1))
+	// // queue.PushBack(lc1)
 
-	for queue.Len() > 0 {
-		test := queue.Front().Value.(LamportClock)
-		fmt.Println(test.GetTime())
+	// for queue.Len() > 0 {
+	// 	test := queue.Front().Value.(LamportClock)
+	// 	fmt.Println(test.GetTime())
 
-		queue.Remove(queue.Front())
-	}
+	// 	queue.Remove(queue.Front())
+	// }
+	b := 100
+	test := 10
+
+	t := float64(test) / 100
+
+	b += int(t * float64(b))
+	fmt.Println(b)
 
 }

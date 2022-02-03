@@ -13,6 +13,19 @@ var NEGATIV_MAX = -500
 type Account struct {
 	Account_Holder memberlist.Node `json:"account_holder"`
 	Balance        int             `json:"balance"`
+	// Percentage     int             `json:"percentage"`
+}
+
+type Account_Message struct {
+	Account_Holder memberlist.Node `json:"account_holder"`
+	Sender         memberlist.Node `json:"access_seekers"`
+	Balance        int             `json:"balance"`
+	Percentage     int             `json:"percentage"`
+}
+
+type Account_Operation_Ack struct {
+	Ack    bool            `json:"free-lock"`
+	Sender memberlist.Node `json:"account_holder"`
 }
 
 type NodesList struct {
@@ -42,25 +55,23 @@ func (ac *Account) Add_Rand_Ammount(ammount_max int) {
 
 //this increases the account balance by a randomly generated percentage
 //multiply with the given ammount
-func (ac *Account) Increase_Balance(ammount int) {
-	//chose randomly percentage
-	rIndex := rand.Intn(100)
-	percentage := rIndex / 100
-	ac.Balance += ammount * percentage
+func (ac *Account) Increase_Balance(ammount int, percentage int) {
+
+	result := float64(percentage) / 100
+
+	ac.Balance += int(float64(ammount) * result)
+
 }
 
 //this decrease the account balance by a randomly generated percentage
 //multiply with the given ammount
-func (ac *Account) Decrease_Balance(ammount int) {
-	if ac.Balance <= NEGATIV_MAX {
+func (ac *Account) Decrease_Balance(ammount int, percentage int) {
+	if ac.Balance >= NEGATIV_MAX {
+		result := float64(percentage) / 100
+		ac.Balance -= int(float64(ammount) * result)
+	} else {
 		log.Printf("The minimum negaativ boarder is reached!\n")
-		return
 	}
-
-	//chose randomly percentage
-	rIndex := rand.Intn(100)
-	percentage := rIndex / 100
-	ac.Balance -= ammount * percentage
 }
 
 //this will add accounts in a list
@@ -83,6 +94,12 @@ func (cAC *Customers_Accounts) AddAccount(ac Account) {
 func (ac *Account) String() string {
 	out := fmt.Sprintf("\tAccount Holder: %s\t account balance: %d Euro\n",
 		ac.Account_Holder.Name, ac.Balance)
+	return out
+}
+
+func (ac *Account_Message) String() string {
+	out := fmt.Sprintf("\tAccount Holder: %s\t account balance: %d Euro\t slected percentage: %d\n",
+		ac.Account_Holder.Name, ac.Balance, ac.Percentage)
 	return out
 }
 
