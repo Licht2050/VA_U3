@@ -25,7 +25,7 @@ import (
 )
 
 // var file = "mygraph.dot"
-var file = "mygraph.dot"
+var file = "newGraph.dot"
 var AVAILABLE_Appointment = []int{10, 13, 14, 15, 16, 17}
 var A_MAX = 3
 var AC_BALANCE_MAX = 100000
@@ -125,8 +125,10 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
 		Account:              bank_account,
 		LamportTime:          lamportClock,
-		R_And_Agra_Algrth:    r_and_agra_algrthm,
+		R_A_Algrth:           r_and_agra_algrthm,
 	}
+
+	sd.R_A_Algrth.Own_Rsource = &Bank.Account{Account_Holder: *sd.LocalNode}
 
 	config.Delegate = sd
 	config.Events = sd
@@ -357,6 +359,7 @@ func parseDiGToPNG(g *Graph.Graph) {
 	fmt.Scanf("%s", &file_name)
 
 	g.ParseGraphToPNGFile(file_name)
+	g.ParseGraphToFile(file_name)
 }
 
 func SendElectionExplorer(ml *memberlist.Memberlist, sd *SyncerDelegate) {

@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"fmt"
 	"sync/atomic"
+	"time"
 )
 
 type LamportClock struct {
@@ -49,6 +50,22 @@ func contain(queue *list.List, lc LamportClock) (bool, *LamportClock) {
 	return false, &LamportClock{}
 }
 
+func test(ch chan int) {
+	i := 0
+	for i < 10 {
+		time.Sleep(1 * time.Second)
+
+		fmt.Println("Test time: ", i)
+
+		if i == 5 {
+			ch <- 10
+			break
+		}
+		i++
+	}
+
+}
+
 func main() {
 	// lc := NewLamportClock()
 	// lc1 := NewLamportClock()
@@ -75,12 +92,21 @@ func main() {
 
 	// 	queue.Remove(queue.Front())
 	// }
-	b := 100
-	test := 10
+	ch := make(chan int, 1)
 
-	t := float64(test) / 100
+	go test(ch)
 
-	b += int(t * float64(b))
-	fmt.Println(b)
+	v := <-ch
+
+	if v == 10 {
+		fmt.Println("Gooooooooooooooooooooooooooooooooooooooooooooo")
+	}
+
+	i := 0
+	for i < 10 {
+		fmt.Println("Main: ", i)
+		time.Sleep(1 * time.Second)
+		i++
+	}
 
 }

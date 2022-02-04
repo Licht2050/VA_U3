@@ -75,7 +75,7 @@ func Menu() {
 	fmt.Println("8. Read graph from file")
 	fmt.Println("9. Read neighbour from gv.dot file")
 	fmt.Println("10. Parse Random genereted DirectGraph to PNG file")
-	fmt.Println("11. Parse Random genereted UnDirectGraph to PNG file")
+	fmt.Println("11. Parse Random genereted UnDirectGraph to PNG and .dot file")
 	fmt.Println("12. Ricart and Agrawala Algorithm")
 }
 
@@ -189,73 +189,105 @@ func Star_Account_Access_Process(sd *SyncerDelegate) {
 	//Choose randomly a member to access his account
 	randMember := One_Random_Member(sd)
 	interestedAccount := Bank.Account{Account_Holder: randMember}
-	sd.R_And_Agra_Algrth.Interested_Resource2 = &interestedAccount
-	sd.R_And_Agra_Algrth.Interested_Resource1 = sd.Account
+	sd.R_A_Algrth.Interested_Resource2 = &interestedAccount
+	sd.R_A_Algrth.Own_Rsource = sd.Account
 
-	fmt.Printf("\n\n===================================Request to Access: \"%s's Account\"=========================================\n\n",
-		sd.R_And_Agra_Algrth.Interested_Resource2.Account_Holder.Name)
+	fmt.Printf("\n\n===================================I Want to Access: \"%s's Account\"=========================================\n\n",
+		sd.R_A_Algrth.Interested_Resource2.Account_Holder.Name)
 
 	sd.LamportTime.Increment()
 	req_accountAccess := RicartAndAgrawala.New_RequesAccountAccess(
-		*sd.LamportTime, *sd.LocalNode, *sd.R_And_Agra_Algrth.Interested_Resource2,
+		*sd.LamportTime, *sd.LocalNode, *sd.R_A_Algrth.Interested_Resource2,
 	)
 
 	for _, m := range sd.Node.Members() {
 		if m.Name != sd.LocalNode.Name {
-			sd.SendMesgToMember(*m, req_accountAccess)
-			sd.R_And_Agra_Algrth.Add_Ack_Waited_Queue(*m)
-			fmt.Printf("++++++++++++++++++++++++++++++Ricard Agrawala send to: %s and lamport time: %d++++++++++++++++++++\n",
-				m.Name, *sd.LamportTime,
-			)
+			sd.R_A_Algrth.Add_Ack_Waited_Queue(*m)
 		}
 	}
+
+	//Request Send per flooding Alg
+	Req_Send_Per_Flooding(*req_accountAccess, sd)
 }
 
-func Account_Access_Channel(sd *SyncerDelegate) {
+func Req_Send_Per_Flooding(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+	//
+	for _, ne := range sd.Neighbours.Neighbours {
+		fmt.Printf("++++++++++++++++++++++++++++++ Ricard Agrawala send to: %s and lamport time: %d++++++++++++++++++++\n",
+			ne.Name, *sd.LamportTime,
+		)
 
-	if !sd.R_And_Agra_Algrth.AccInformation && !sd.R_And_Agra_Algrth.Operation_Ack {
-
-		sleepTime := rand.Intn(3)
-
-		time.Sleep(time.Duration(sleepTime) * time.Second)
-
-		fmt.Printf("--------------------------Start to send Account Access Request after \"%d Seconds\"--------------------------\n", sleepTime)
-		Star_Account_Access_Process(sd)
+		sd.SendMesgToMember(ne, req)
 	}
 }
 
-func Change_Account_Amount(ch chan Bank.Account_Message, sd *SyncerDelegate) {
+func Req_Send_To_Neighbours(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+	contain, _ := sd.R_A_Algrth.Is_Flooding_Queue_Contains(req)
+	// fmt.Printf("\n\n---- Initiator: %s ----Sender : %s interested account: %s\n\n", req.Initator.Name, req.Sender.Name, req.Account.Account_Holder.Name)
+	if !contain {
 
-	recieved_ac_msg := <-ch
-	fmt.Printf("--------------------------Account Information recieved to start the increment or decrement Operation--------------------------\n")
+		sd.R_A_Algrth.AddTo_Flooding_Queue(req)
+		for _, ne := range sd.Neighbours.Neighbours {
+			if ne.Name != req.Sender.Name && ne.Name != req.Initator.Name {
+				fmt.Printf("++++++++++++++++++++++++++++++ Req using flooding Alg send to: %s and local lamport time: %d++++++++++++++++++++\n",
+					ne.Name, *sd.LamportTime,
+				)
+				sd.SendMesgToMember(ne, req)
+			}
+		}
+	}
+	// fmt.Println(sd.R_A_Algrth.Flooding_Queue_toString())
+	//if the queue contain more then 10 request, then the remove the oldest
+	if sd.R_A_Algrth.Flooding_Queue.Len() > 10 {
 
-	fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$Recieved Account Info$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", recieved_ac_msg.String())
+		fmt.Printf("\n\n\n----------------------------------------------------------  \"%s\" req as initiator is removed from flooding queue because is too old\n\n\n",
+			sd.R_A_Algrth.Flooding_Queue.Front().Value.(RicartAndAgrawala.RequesAccountAccess).Initator.Name)
+		// sd.R_A_Algrth.Remove_Old_Flooding_element()
+	}
+}
 
-	fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$Own Account Info$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
+// func Account_Access_Channel(ch chan int, sd *SyncerDelegate)
+func Account_Access_Channel(sd *SyncerDelegate) {
+	sleepTime := rand.Intn(3)
+	time.Sleep(time.Duration(sleepTime) * time.Second)
 
-	if sd.R_And_Agra_Algrth.CurrentlyUsingR == nil {
-		fmt.Printf("--------------------------Own Account Information send to \"%s\" --------------------------\n", recieved_ac_msg.Sender.Name)
+	fmt.Printf("--------------------------Start to send Account Access Request after \"%d Seconds\"--------------------------\n", sleepTime)
+	Star_Account_Access_Process(sd)
 
+}
+
+//func Change_Account_Amount(ch chan Bank.Account_Message, sd *SyncerDelegate)
+func Change_Account_Amount(received_ac_msg Bank.Account_Message, sd *SyncerDelegate) {
+
+	// received_ac_msg := <-ch
+	fmt.Printf("--------------------------Account Information recieved to start the increment or decrement Operation--------------------------\n\n")
+
+	fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Recieved Account Info $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", received_ac_msg.String())
+
+	fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Own Account Info $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
+
+	if sd.R_A_Algrth.CurrentlyUsingR == nil {
+
+		fmt.Printf("--------------------------Own Account Information send to \"%s\" --------------------------\n", received_ac_msg.Sender.Name)
 		own_account_msg := Bank.Account_Message{Account_Holder: *sd.LocalNode,
-			Sender: *sd.LocalNode, Balance: sd.Account.Balance, Percentage: recieved_ac_msg.Percentage}
+			Sender: *sd.LocalNode, Balance: sd.Account.Balance, Percentage: received_ac_msg.Percentage}
 
-		sd.SendMesgToMember(recieved_ac_msg.Sender, own_account_msg)
+		sd.SendMesgToMember(received_ac_msg.Sender, own_account_msg)
+		time.Sleep(1 * time.Second)
 
-		operation(recieved_ac_msg, sd)
-		fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$Own Account Info afther Operation$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
+		operation(received_ac_msg, sd)
+		fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Target Account Info after Operation $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
 		//afther operation send acknowledge to free the block
 		ack := Bank.Account_Operation_Ack{Ack: true, Sender: *sd.LocalNode}
-		sd.SendMesgToMember(recieved_ac_msg.Sender, ack)
-		fmt.Printf("--------------------------After Operation Acknowledgement send to \"%s\" to free the lock\n", recieved_ac_msg.Sender.Name)
+		sd.SendMesgToMember(received_ac_msg.Sender, ack)
+		fmt.Printf("\n\n\n--------------------------After Operation Acknowledgement send to \"%s\" to free the lock\n\n\n", received_ac_msg.Sender.Name)
 
-	} else {
+	} else if received_ac_msg.Account_Holder.Name == sd.R_A_Algrth.CurrentlyUsingR.Account_Holder.Name {
+		operation(received_ac_msg, sd)
+		fmt.Printf("\n\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Access Seekers Account Info after Operation $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
 
-		operation(recieved_ac_msg, sd)
-		fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$Own Account Info afther Operation$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
-		sd.R_And_Agra_Algrth.AccInformation = true
-		//Freigabe soll passieren
-		// ch := make(chan Bank.Account_Operation_Ack, 1)
-		// go freeLock(ch, sd)
+		sd.R_A_Algrth.Operation_Ack = true
+
 	}
 }
 
@@ -265,26 +297,34 @@ func operation(receivedAc Bank.Account_Message, sd *SyncerDelegate) {
 
 		return
 	}
-
 	sd.Account.Decrease_Balance(sd.Account.Balance, receivedAc.Percentage)
 }
 
-func freeLock(sd *SyncerDelegate) bool {
-	if sd.R_And_Agra_Algrth.AccInformation && sd.R_And_Agra_Algrth.Operation_Ack {
+func freeLock(ch chan bool, sd *SyncerDelegate) {
 
-		fmt.Printf("\n\t\t\t\t\t\tFree The Lock and Send Acknowledge to all nodes in the queue\n")
-		for sd.R_And_Agra_Algrth.RequestQueue.Len() > 0 {
-			temp := sd.R_And_Agra_Algrth.GetFirstQueueRequest()
-			send_AcA_Acknowledge(temp, sd)
+	i := 0
+	for i < 10 {
+		fmt.Println("***********************************  ***************************: ", sd.R_A_Algrth.AccInformation, sd.R_A_Algrth.Operation_Ack)
+		if sd.R_A_Algrth.AccInformation && sd.R_A_Algrth.Operation_Ack {
+			sd.R_A_Algrth.CurrentlyUsingR = nil
+			Clean_Lockal_Var(sd)
+			fmt.Printf("\n\t\t\t\t\t\tFree The Lock and Send Acknowledge to all nodes in the queue\n")
+			for sd.R_A_Algrth.RequestQueue.Len() > 0 {
+				temp := sd.R_A_Algrth.GetFirstQueueRequest()
+				send_AcA_Acknowledge(temp, sd)
+			}
+			ch <- true
+			break
 		}
-		//clean all
-		sd.R_And_Agra_Algrth.AccInformation = false
-		sd.R_And_Agra_Algrth.Operation_Ack = false
-		sd.R_And_Agra_Algrth.Interested_Resource2 = nil
-		sd.R_And_Agra_Algrth.CurrentlyUsingR = nil
-
-		return true
+		time.Sleep(1 * time.Second)
+		i++
 	}
-	//Resource wieder freigeben
-	return false
+
+}
+
+func Clean_Lockal_Var(sd *SyncerDelegate) {
+	//clean all
+	sd.R_A_Algrth.Interested_Resource2 = nil
+	sd.R_A_Algrth.AccInformation = false
+	sd.R_A_Algrth.Operation_Ack = false
 }

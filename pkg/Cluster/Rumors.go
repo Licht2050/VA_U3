@@ -104,25 +104,3 @@ func NewRumorsList() *RumorsList {
 		Rumors: map[string]*Rumors{},
 	}
 }
-
-// func main() {
-// 	// rl := NewRumorsList()
-
-// 	r1 := Rumors{RummorsMsg: Cluster.Message{Msg: "First Rumors"}}
-// 	r2 := Rumors{RummorsMsg: Cluster.Message{Msg: "Second Rumors"}}
-// 	r3 := Rumors{RummorsMsg: Cluster.Message{Msg: "Third Rumors"}}
-
-// 	rl := NewRumorsList()
-// 	rl.AddRumorsToList(r1)
-// 	rl.AddRumorsToList(r2)
-// 	rl.AddRumorsToList(r3)
-
-// 	r1.RummorsMsg = Cluster.Message{Msg: "Test Rumor"}
-
-// 	fmt.Println(rl.String())
-
-// 	rl.IfRumorsIncrementRN(&r2, 2)
-// 	rl.IfRumorsIncrementRN(&r2, 2)
-// 	fmt.Println(rl.String())
-
-// }

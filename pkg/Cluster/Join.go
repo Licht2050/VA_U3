@@ -1,6 +1,7 @@
 package Cluster
 
 import (
+	"VAA_Uebung1/pkg/Cluster/Bank"
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
@@ -108,8 +109,10 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 		Cluster_AP_Protocol:  cluster_appointment_Protocol,
 		Account:              bank_account,
 		LamportTime:          lamportClock,
-		R_And_Agra_Algrth:    r_and_agra_algrthm,
+		R_A_Algrth:           r_and_agra_algrthm,
 	}
+
+	sd.R_A_Algrth.Own_Rsource = &Bank.Account{Account_Holder: *sd.LocalNode}
 
 	config.Delegate = sd
 	config.Events = sd

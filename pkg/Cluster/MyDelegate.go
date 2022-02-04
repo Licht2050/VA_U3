@@ -44,8 +44,8 @@ type SyncerDelegate struct {
 	//Account
 	Account *Bank.Account
 	//Ricart and Agrawala Algorithm
-	LamportTime       *RicartAndAgrawala.LamportClock
-	R_And_Agra_Algrth *RicartAndAgrawala.RicartAndAgrawala
+	LamportTime *RicartAndAgrawala.LamportClock
+	R_A_Algrth  *RicartAndAgrawala.RicartAndAgrawala
 }
 
 //compare the incoming byte message to structs
@@ -112,8 +112,17 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		neighbour_info_message_handling(sd, msg)
 
 	case REQUEST_ACCOUNT_ACCESS:
+		reqAA := RicartAndAgrawala.RequesAccountAccess{}
+		err := json.Unmarshal(msg, &reqAA)
+		_ = err
+
 		//Recieve Access to Critical Section Request
-		request_account_access(msg, sd)
+		request_account_access(reqAA, sd)
+
+		//Request Send per flooding alg to neighbours
+		reqAA.Sender = sd.LocalNode
+		Req_Send_To_Neighbours(reqAA, sd)
+
 	case ACCESS_ACCOUNT_ACKNOWLEDGE:
 		recieved_access_acknowledge(msg, sd)
 
@@ -122,24 +131,29 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		account_Negotiation(msg, sd)
 
 	case FREE_LOCK:
-
-		if lock_handling(msg, sd) {
-			//Start the same process again.
-			//Criticle Section Access Request
-			Account_Access_Channel(sd)
-		}
+		fmt.Println("*********************************** Free_Lock Message is recieved ***************************")
+		lock_handling(msg, sd)
 	}
 }
 
-func lock_handling(msg []byte, sd *SyncerDelegate) bool {
+func lock_handling(msg []byte, sd *SyncerDelegate) {
 	ac_operation_ack := Bank.Account_Operation_Ack{}
 	err := json.Unmarshal(msg, &ac_operation_ack)
 	_ = err
-	sd.R_And_Agra_Algrth.Operation_Ack = true
+	sd.R_A_Algrth.AccInformation = true
 
-	// ch := make(chan Bank.Account_Operation_Ack, 1)
-
-	return freeLock(sd)
+	ch := make(chan bool, 1)
+	go freeLock(ch, sd)
+	done := <-ch
+	fmt.Println("*********************************** Before ***************************: ", done)
+	if done {
+		//Start the same process again.
+		//Criticle Section Access Request
+		// ch := make(chan int, 1)
+		// go Account_Access_Channel(ch, sd)
+		Account_Access_Channel(sd)
+		fmt.Println("*********************************** Inside ***************************: ", done)
+	}
 }
 
 func account_Negotiation(msg []byte, sd *SyncerDelegate) {
@@ -147,9 +161,9 @@ func account_Negotiation(msg []byte, sd *SyncerDelegate) {
 	err := json.Unmarshal(msg, &ac_Negotiation)
 	_ = err
 
-	acoountChannel := make(chan Bank.Account_Message, 1)
-	go Change_Account_Amount(acoountChannel, sd)
-	acoountChannel <- ac_Negotiation
+	// acoountChannel := make(chan Bank.Account_Message, 1)
+	Change_Account_Amount(ac_Negotiation, sd)
+	// acoountChannel <- ac_Negotiation
 }
 
 func recieved_access_acknowledge(msg []byte, sd *SyncerDelegate) {
@@ -162,37 +176,32 @@ func recieved_access_acknowledge(msg []byte, sd *SyncerDelegate) {
 
 //Acknowledge handling Funcktion
 func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *SyncerDelegate) {
-	if sd.LamportTime.Update(ack.Ack_Sender_Time.Lamport_time) {
-		fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
-	} else {
-		sd.LamportTime.Increment()
-	}
-	if sd.R_And_Agra_Algrth.Interested_Resource_isEmpty() {
+	if sd.R_A_Algrth.Interested_Resource_isEmpty() {
 		return
 	}
 
 	//check if the recieved acknowledge match to interested account
-	if ack.ReqAA.Account_Holder.Name == sd.R_And_Agra_Algrth.Interested_Resource2.Account_Holder.Name {
+	if ack.ReqAA.Account_Holder.Name == sd.R_A_Algrth.Interested_Resource2.Account_Holder.Name {
 
 		//check if the reciever could remove from the Ack_Waited_Queue
-		if sd.R_And_Agra_Algrth.Remove_From_Ack_Waited_Queue(ack.Ack_Sender) {
+		if sd.R_A_Algrth.Remove_From_Ack_Waited_Queue(ack.Ack_Sender) {
 
-			if len(sd.R_And_Agra_Algrth.Ack_Waited_Queue) == 0 {
-				sd.R_And_Agra_Algrth.CurrentlyUsingR = sd.R_And_Agra_Algrth.Interested_Resource2
-				sd.R_And_Agra_Algrth.Interested_Resource2 = nil
-				sd.R_And_Agra_Algrth.AccInformation = false
-				sd.R_And_Agra_Algrth.Operation_Ack = false
-				fmt.Printf("The Acknowledge is succesfully recieved from all members now the account Info is send to: \"%s\"\n",
-					sd.R_And_Agra_Algrth.CurrentlyUsingR.Account_Holder.Name,
-				)
+			if len(sd.R_A_Algrth.Ack_Waited_Queue) == 0 {
+				sd.R_A_Algrth.CurrentlyUsingR = sd.R_A_Algrth.Interested_Resource2
 
+				//
+				Clean_Lockal_Var(sd)
+
+				//select randomly number between 0-100 to increase or decrease the balance
 				rand_Percentage := rand.Intn(100)
-
+				//Send Own account info to node intrested node and wait for his account info
 				temp_Account_Message := Bank.Account_Message{Account_Holder: *sd.LocalNode, Sender: *sd.LocalNode,
 					Balance: sd.Account.Balance, Percentage: rand_Percentage}
+				sd.SendMesgToMember(sd.R_A_Algrth.CurrentlyUsingR.Account_Holder, temp_Account_Message)
 
-				sd.SendMesgToMember(sd.R_And_Agra_Algrth.CurrentlyUsingR.Account_Holder, temp_Account_Message)
-
+				fmt.Printf("The Acknowledge is succesfully recieved from all members now the account Info with randomly selected percentage \"%d\" is send to: \"%s\"\n",
+					rand_Percentage, sd.R_A_Algrth.CurrentlyUsingR.Account_Holder.Name,
+				)
 			}
 		}
 	}
@@ -200,17 +209,15 @@ func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *S
 	time.Sleep(1 * time.Microsecond)
 
 	//print the Waited_for_Ack_Queue
-	for _, m := range sd.R_And_Agra_Algrth.Ack_Waited_Queue {
+	for _, m := range sd.R_A_Algrth.Ack_Waited_Queue {
 		fmt.Printf("The Acknowledge Reciever in Que: %s\n", m.Name)
 	}
 
 }
 
-func request_account_access(msg []byte, sd *SyncerDelegate) {
-	reqAA := RicartAndAgrawala.RequesAccountAccess{}
-	err := json.Unmarshal(msg, &reqAA)
-	_ = err
-	fmt.Printf("------------------------------Request Recieved from : \"%s  Sender Time: %d\"------------------------------\n", reqAA.Sender, reqAA.Req_Sender_Time.GetTime())
+func request_account_access(reqAA RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+
+	fmt.Printf("------------------------------Request Recieved from : \"%s  Sender Time: %d\"------------------------------\n", reqAA.Initator, reqAA.Req_Sender_Time.GetTime())
 	account_access_handling(reqAA, sd)
 }
 
@@ -219,50 +226,41 @@ func send_AcA_Acknowledge(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerD
 	status := "Ok"
 	ack := RicartAndAgrawala.New_AccountAccess_Acknowledge(*req.Account, *sd.LamportTime, *sd.LocalNode, status)
 	fmt.Printf("\t\t\t\t\t\tAcknowledge Send To: \"%s\", for Access to \"%s's and %s's\" Accounts\n\n",
-		req.Sender.Name, req.Account.Account_Holder.Name, req.Sender.Name)
+		req.Initator.Name, req.Account.Account_Holder.Name, req.Initator.Name)
 
-	sd.SendMesgToMember(*req.Sender, ack)
+	sd.SendMesgToMember(*req.Initator, ack)
 }
 
 //Request handling
 func account_access_handling(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
 
-	// sd.R_And_Agra_Algrth.Interested_Resource = req.Account
-
 	//if not interested and currently not using the critical resources, then send acknowledgement.
-	sender_resource := Bank.Account{Account_Holder: *req.Sender}
-	if !(sd.R_And_Agra_Algrth.Is_CurrentlyUsing(*req.Account, sender_resource) ||
-		sd.R_And_Agra_Algrth.Is_Interested(*req.Account, sender_resource)) {
-
-		//if the sender time is biger then local than the local will be updated otherweis the local will increment
-		if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
-			fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
-		} else {
-			sd.LamportTime.Increment()
-		}
-
+	sender_resource := Bank.Account{Account_Holder: *req.Initator}
+	if !(sd.R_A_Algrth.Is_CurrentlyUsing(*req.Account, sender_resource) ||
+		sd.R_A_Algrth.Is_Interested(*req.Account, sender_resource)) {
+		//Send Ack
 		fmt.Printf("\n\t\t\t\t\t\tNot Interested And Not Currently Using\n")
 		send_AcA_Acknowledge(req, sd)
 
 		return
 
-	} else if sd.R_And_Agra_Algrth.Is_CurrentlyUsing(*req.Account, sender_resource) {
+	} else if sd.R_A_Algrth.Is_CurrentlyUsing(*req.Account, sender_resource) {
+		//Add to Queue
 		fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because CurrentlyUsing\n")
-		sd.R_And_Agra_Algrth.AddRequestToQueue(req)
-		fmt.Println(sd.R_And_Agra_Algrth.Queue_toString())
+		AddToQueue(sd, req)
+		return
 
-	} else if sd.R_And_Agra_Algrth.Is_Interested(*req.Account, sender_resource) {
+	} else if sd.R_A_Algrth.Is_Interested(*req.Account, sender_resource) {
 		fmt.Printf("########################## requested Account is interesting to %s  and local interting account: %s\n",
-			req.Account.Account_Holder.Name, sd.R_And_Agra_Algrth.Interested_Resource2.Account_Holder.Name,
+			req.Account.Account_Holder.Name, sd.R_A_Algrth.Interested_Resource2.Account_Holder.Name,
 		)
-		//if requested sender time is less than local time, then should queue the request
-		if req.Req_Sender_Time.GetTime() < sd.LamportTime.GetTime() {
-			//if the sender time is biger then local than the local will be updated otherweis the local will increment
-			if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
-				fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
-			} else {
-				sd.LamportTime.Increment()
-			}
+
+		if req.Req_Sender_Time.GetTime() == sd.LamportTime.GetTime() {
+			//if both have the same time, then the one with smalle id will gain access to the critical section
+			ifBoth_Have_Same_time(sd, req)
+			return
+			//if requested sender time is less than local time, then should queue the request
+		} else if req.Req_Sender_Time.GetTime() < sd.LamportTime.GetTime() {
 
 			fmt.Printf("\n\t\t\t\t\t\tAcknowledge Send, Because The Sender Time \"%d < %d\" Local Time\n",
 				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
@@ -275,17 +273,32 @@ func account_access_handling(req RicartAndAgrawala.RequesAccountAccess, sd *Sync
 			fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because The Sender Time \"%d > %d\" Local Time\n",
 				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
 			)
-			sd.R_And_Agra_Algrth.AddRequestToQueue(req)
-			fmt.Println(sd.R_And_Agra_Algrth.Queue_toString())
+			AddToQueue(sd, req)
 		}
 	}
 
-	//if the sender time is biger then local than the local will be updated otherweis the local will increment
-	if sd.LamportTime.Update(req.Req_Sender_Time.Lamport_time) {
-		fmt.Println("\t\t\t\t\t\tLocal Time Updated: ", sd.LamportTime.GetTime())
+}
+
+func ifBoth_Have_Same_time(sd *SyncerDelegate, req RicartAndAgrawala.RequesAccountAccess) {
+	localId, _ := strconv.Atoi(ParseNodeId(sd.LocalNode.Name))
+	senderId, _ := strconv.Atoi(ParseNodeId(req.Initator.Name))
+
+	if senderId < localId {
+		fmt.Printf("\n\t\t\t\t\t\tAcknowledge Send, Because The Sender Time \"%d == %d\" Local Time But \"SenderId < LocalId\"\n",
+			req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+		)
+		send_AcA_Acknowledge(req, sd)
 	} else {
-		sd.LamportTime.Increment()
+		fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because The Sender Time \"%d == %d\" Local Time But \" LocalId < SenderId\"\n",
+			req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+		)
+		AddToQueue(sd, req)
 	}
+}
+
+func AddToQueue(sd *SyncerDelegate, req RicartAndAgrawala.RequesAccountAccess) {
+	sd.R_A_Algrth.AddRequestToQueue(req)
+	fmt.Println(sd.R_A_Algrth.Queue_toString())
 }
 
 func appointment_Handling(msg []byte, sd *SyncerDelegate) {
@@ -708,6 +721,8 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 
 	case "Start_Req_Critical_Section":
 		//Criticle Section Access Request
+		// ch := make(chan int, 1)
+		// go Account_Access_Channel(ch, sd)
 		Account_Access_Channel(sd)
 	}
 

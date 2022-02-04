@@ -25,7 +25,7 @@ type Account_Message struct {
 
 type Account_Operation_Ack struct {
 	Ack    bool            `json:"free-lock"`
-	Sender memberlist.Node `json:"account_holder"`
+	Sender memberlist.Node `json:"account_holder_free_lock"`
 }
 
 type NodesList struct {
