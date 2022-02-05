@@ -3,6 +3,7 @@ package Cluster
 import (
 	"VAA_Uebung1/pkg/Cluster/Bank"
 	"VAA_Uebung1/pkg/Exception"
+	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 	"bufio"
@@ -186,6 +187,10 @@ func One_Random_Member(sd *SyncerDelegate) memberlist.Node {
 
 func Star_Account_Access_Process(sd *SyncerDelegate) {
 
+	request_start_time := Lamportclock.NewLamportClock()
+	request_start_time.Update(sd.LamportTime.GetTime())
+	sd.R_A_Algrth.Sending_Req_Time = request_start_time
+
 	//Choose randomly a member to access his account
 	randMember := One_Random_Member(sd)
 	interestedAccount := Bank.Account{Account_Holder: randMember}
@@ -221,7 +226,7 @@ func Req_Send_Per_Flooding(req RicartAndAgrawala.RequesAccountAccess, sd *Syncer
 	}
 }
 
-func Req_Send_To_Neighbours(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
+func Req_Send_To_Neighbours(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) bool {
 	contain, _ := sd.R_A_Algrth.Is_Flooding_Queue_Contains(req)
 	// fmt.Printf("\n\n---- Initiator: %s ----Sender : %s interested account: %s\n\n", req.Initator.Name, req.Sender.Name, req.Account.Account_Holder.Name)
 	if !contain {
@@ -235,15 +240,18 @@ func Req_Send_To_Neighbours(req RicartAndAgrawala.RequesAccountAccess, sd *Synce
 				sd.SendMesgToMember(ne, req)
 			}
 		}
-	}
-	// fmt.Println(sd.R_A_Algrth.Flooding_Queue_toString())
-	//if the queue contain more then 10 request, then the remove the oldest
-	if sd.R_A_Algrth.Flooding_Queue.Len() > 10 {
 
-		fmt.Printf("\n\n\n----------------------------------------------------------  \"%s\" req as initiator is removed from flooding queue because is too old\n\n\n",
-			sd.R_A_Algrth.Flooding_Queue.Front().Value.(RicartAndAgrawala.RequesAccountAccess).Initator.Name)
-		// sd.R_A_Algrth.Remove_Old_Flooding_element()
+		// fmt.Println(sd.R_A_Algrth.Flooding_Queue_toString())
+		//if the queue contain more then 10 request, then the remove the oldest
+		if sd.R_A_Algrth.Flooding_Queue.Len() > 10 {
+
+			fmt.Printf("\n\n\n----------------------------------------------------------  \"%s\" req as initiator is removed from flooding queue because is too old\n\n\n",
+				sd.R_A_Algrth.Flooding_Queue.Front().Value.(RicartAndAgrawala.RequesAccountAccess).Initator.Name)
+			// sd.R_A_Algrth.Remove_Old_Flooding_element()
+		}
+		return true
 	}
+	return false
 }
 
 // func Account_Access_Channel(ch chan int, sd *SyncerDelegate)
@@ -278,7 +286,7 @@ func Change_Account_Amount(received_ac_msg Bank.Account_Message, sd *SyncerDeleg
 		operation(received_ac_msg, sd)
 		fmt.Printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Target Account Info after Operation $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$4\n%s", sd.Account.String())
 		//afther operation send acknowledge to free the block
-		ack := Bank.Account_Operation_Ack{Ack: true, Sender: *sd.LocalNode}
+		ack := Bank.Account_Operation_Ack{Ack: true, Sender: *sd.LocalNode, Sender_Time: *sd.LamportTime}
 		sd.SendMesgToMember(received_ac_msg.Sender, ack)
 		fmt.Printf("\n\n\n--------------------------After Operation Acknowledgement send to \"%s\" to free the lock\n\n\n", received_ac_msg.Sender.Name)
 

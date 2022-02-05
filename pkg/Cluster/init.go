@@ -5,6 +5,7 @@ import (
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Exception"
 	"VAA_Uebung1/pkg/Graph"
+	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 
@@ -25,7 +26,7 @@ import (
 )
 
 // var file = "mygraph.dot"
-var file = "newGraph.dot"
+var file = "newGraph2.dot"
 var AVAILABLE_Appointment = []int{10, 13, 14, 15, 16, 17}
 var A_MAX = 3
 var AC_BALANCE_MAX = 100000
@@ -101,7 +102,7 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 	bank_account := create_Account(ml.LocalNode())
 
 	//Ricart And Agrawala Algorithm
-	lamportClock := RicartAndAgrawala.NewLamportClock()
+	lamportClock := Lamportclock.NewLamportClock()
 	r_and_agra_algrthm := RicartAndAgrawala.New_R_and_A_Algrthm()
 
 	//register all var to syncerdelegate

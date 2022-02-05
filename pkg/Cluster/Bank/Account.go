@@ -1,6 +1,7 @@
 package Bank
 
 import (
+	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"fmt"
 	"log"
 	"math/rand"
@@ -17,15 +18,17 @@ type Account struct {
 }
 
 type Account_Message struct {
-	Account_Holder memberlist.Node `json:"account_holder"`
-	Sender         memberlist.Node `json:"access_seekers"`
-	Balance        int             `json:"balance"`
-	Percentage     int             `json:"percentage"`
+	Account_Holder memberlist.Node           `json:"account_holder"`
+	Sender         memberlist.Node           `json:"access_seekers"`
+	Sender_Time    Lamportclock.LamportClock `json:"sender_time"`
+	Balance        int                       `json:"balance"`
+	Percentage     int                       `json:"percentage"`
 }
 
 type Account_Operation_Ack struct {
-	Ack    bool            `json:"free-lock"`
-	Sender memberlist.Node `json:"account_holder_free_lock"`
+	Ack         bool                      `json:"free-lock"`
+	Sender      memberlist.Node           `json:"account_holder_free_lock"`
+	Sender_Time Lamportclock.LamportClock `json:"sender_time"`
 }
 
 type NodesList struct {

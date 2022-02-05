@@ -4,6 +4,7 @@ import (
 	"VAA_Uebung1/pkg/Cluster/Bank"
 	"VAA_Uebung1/pkg/Election"
 	"VAA_Uebung1/pkg/Graph"
+	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
 	"encoding/json"
@@ -44,7 +45,7 @@ type SyncerDelegate struct {
 	//Account
 	Account *Bank.Account
 	//Ricart and Agrawala Algorithm
-	LamportTime *RicartAndAgrawala.LamportClock
+	LamportTime *Lamportclock.LamportClock
 	R_A_Algrth  *RicartAndAgrawala.RicartAndAgrawala
 }
 
@@ -70,7 +71,7 @@ func CompareJson(msg []byte) int {
 		if key == "appointment_time" {
 			return APPOINTMENT_MESSAGE
 		}
-		if key == "lamport_time" {
+		if key == "req_initiator_time" {
 			return REQUEST_ACCOUNT_ACCESS
 		}
 		if key == "ack_status" {
@@ -104,8 +105,6 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 	case ELECTION_ECHO_MESSAGE:
 		//it handeld the echo message. echo message contains the answer for coordinator election message.
 		echo_message_handling(msg, sd)
-	case APPOINTMENT_MESSAGE:
-		appointment_Handling(msg, sd)
 	case NEIGHBOUR_INFO_MESSAGE:
 		//MasterNode recieve's neighbours from every node in the cluster afther any update occurred
 		//afther recieved the message it will insert nodes and their neighbour's in to "NodesAndNeighbours" list
@@ -116,14 +115,21 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		err := json.Unmarshal(msg, &reqAA)
 		_ = err
 
-		//Recieve Access to Critical Section Request
-		request_account_access(reqAA, sd)
+		fmt.Println("Recieved Req")
+
+		sd.LamportTime.Update(reqAA.Req_Sender_Time.GetTime())
+		reqAA.Req_Sender_Time = *sd.LamportTime
 
 		//Request Send per flooding alg to neighbours
+		//if the request is already recieved, then dont handle it
 		reqAA.Sender = sd.LocalNode
-		Req_Send_To_Neighbours(reqAA, sd)
+		if Req_Send_To_Neighbours(reqAA, sd) {
+			//Recieve Access to Critical Section Request
+			request_account_access(reqAA, sd)
+		}
 
 	case ACCESS_ACCOUNT_ACKNOWLEDGE:
+
 		recieved_access_acknowledge(msg, sd)
 
 	case ACCOUNT_NEGOTIATION:
@@ -141,6 +147,8 @@ func lock_handling(msg []byte, sd *SyncerDelegate) {
 	err := json.Unmarshal(msg, &ac_operation_ack)
 	_ = err
 	sd.R_A_Algrth.AccInformation = true
+
+	sd.LamportTime.Update(ac_operation_ack.Sender_Time.GetTime())
 
 	ch := make(chan bool, 1)
 	go freeLock(ch, sd)
@@ -161,6 +169,8 @@ func account_Negotiation(msg []byte, sd *SyncerDelegate) {
 	err := json.Unmarshal(msg, &ac_Negotiation)
 	_ = err
 
+	sd.LamportTime.Update(ac_Negotiation.Sender_Time.GetTime())
+
 	// acoountChannel := make(chan Bank.Account_Message, 1)
 	Change_Account_Amount(ac_Negotiation, sd)
 	// acoountChannel <- ac_Negotiation
@@ -171,6 +181,7 @@ func recieved_access_acknowledge(msg []byte, sd *SyncerDelegate) {
 	err := json.Unmarshal(msg, &ackAA)
 	_ = err
 	fmt.Printf("------------------------------Acknowledge Recieved from : \"%s Sender Time: %d\"------------------------------\n", ackAA.Ack_Sender.Name, ackAA.Ack_Sender_Time.GetTime())
+	sd.LamportTime.Update(ackAA.Ack_Sender_Time.GetTime())
 	acknowledge_Handling(ackAA, sd)
 }
 
@@ -196,7 +207,7 @@ func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *S
 				rand_Percentage := rand.Intn(100)
 				//Send Own account info to node intrested node and wait for his account info
 				temp_Account_Message := Bank.Account_Message{Account_Holder: *sd.LocalNode, Sender: *sd.LocalNode,
-					Balance: sd.Account.Balance, Percentage: rand_Percentage}
+					Balance: sd.Account.Balance, Percentage: rand_Percentage, Sender_Time: *sd.LamportTime}
 				sd.SendMesgToMember(sd.R_A_Algrth.CurrentlyUsingR.Account_Holder, temp_Account_Message)
 
 				fmt.Printf("The Acknowledge is succesfully recieved from all members now the account Info with randomly selected percentage \"%d\" is send to: \"%s\"\n",
@@ -217,7 +228,7 @@ func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *S
 
 func request_account_access(reqAA RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
 
-	fmt.Printf("------------------------------Request Recieved from : \"%s  Sender Time: %d\"------------------------------\n", reqAA.Initator, reqAA.Req_Sender_Time.GetTime())
+	fmt.Printf("------------------------------Request Recieved from : \"%s  Sender Time: %d\"------------------------------\n", reqAA.Initator, reqAA.ReqInitiator_Time.GetTime())
 	account_access_handling(reqAA, sd)
 }
 
@@ -255,15 +266,15 @@ func account_access_handling(req RicartAndAgrawala.RequesAccountAccess, sd *Sync
 			req.Account.Account_Holder.Name, sd.R_A_Algrth.Interested_Resource2.Account_Holder.Name,
 		)
 
-		if req.Req_Sender_Time.GetTime() == sd.LamportTime.GetTime() {
+		if req.ReqInitiator_Time.GetTime() == sd.R_A_Algrth.Sending_Req_Time.GetTime() {
 			//if both have the same time, then the one with smalle id will gain access to the critical section
 			ifBoth_Have_Same_time(sd, req)
 			return
 			//if requested sender time is less than local time, then should queue the request
-		} else if req.Req_Sender_Time.GetTime() < sd.LamportTime.GetTime() {
+		} else if req.ReqInitiator_Time.GetTime() < sd.R_A_Algrth.Sending_Req_Time.GetTime() {
 
 			fmt.Printf("\n\t\t\t\t\t\tAcknowledge Send, Because The Sender Time \"%d < %d\" Local Time\n",
-				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+				req.ReqInitiator_Time.GetTime(), sd.LamportTime.GetTime(),
 			)
 			send_AcA_Acknowledge(req, sd)
 
@@ -271,7 +282,7 @@ func account_access_handling(req RicartAndAgrawala.RequesAccountAccess, sd *Sync
 
 		} else {
 			fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because The Sender Time \"%d > %d\" Local Time\n",
-				req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+				req.ReqInitiator_Time.GetTime(), sd.LamportTime.GetTime(),
 			)
 			AddToQueue(sd, req)
 		}
@@ -285,12 +296,12 @@ func ifBoth_Have_Same_time(sd *SyncerDelegate, req RicartAndAgrawala.RequesAccou
 
 	if senderId < localId {
 		fmt.Printf("\n\t\t\t\t\t\tAcknowledge Send, Because The Sender Time \"%d == %d\" Local Time But \"SenderId < LocalId\"\n",
-			req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+			req.ReqInitiator_Time.GetTime(), sd.R_A_Algrth.Sending_Req_Time.GetTime(),
 		)
 		send_AcA_Acknowledge(req, sd)
 	} else {
 		fmt.Printf("\n\t\t\t\t\t\tRequest Add To Queue, Because The Sender Time \"%d == %d\" Local Time But \" LocalId < SenderId\"\n",
-			req.Req_Sender_Time.GetTime(), sd.LamportTime.GetTime(),
+			req.ReqInitiator_Time.GetTime(), sd.R_A_Algrth.Sending_Req_Time.GetTime(),
 		)
 		AddToQueue(sd, req)
 	}
@@ -299,116 +310,6 @@ func ifBoth_Have_Same_time(sd *SyncerDelegate, req RicartAndAgrawala.RequesAccou
 func AddToQueue(sd *SyncerDelegate, req RicartAndAgrawala.RequesAccountAccess) {
 	sd.R_A_Algrth.AddRequestToQueue(req)
 	fmt.Println(sd.R_A_Algrth.Queue_toString())
-}
-
-func appointment_Handling(msg []byte, sd *SyncerDelegate) {
-	apnt_message := Appointment{}
-	err := json.Unmarshal(msg, &apnt_message)
-	_ = err
-
-	if apnt_message.Message.Msg == "selected_time" && sd.Local_Appointment.Message != apnt_message.Message {
-		apnt_message.Inviter = *sd.LocalNode
-		sd.Local_Appointment.Message = apnt_message.Message
-		Send_Negotiated_time(sd, apnt_message)
-	}
-
-	if apnt_message.Message.Msg == "start_appointment_process" {
-		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Appointment process initiator!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-		selected_neighbour := First_Apnt_negotiation(sd)
-		sd.SendMesgToList(selected_neighbour, sd.Local_Appointment)
-		fmt.Println("Appointment Send To: ", sd.Local_AP_Protocol.Rand_Selected_Neighbours)
-	}
-	if apnt_message.Message.Msg == "Double_Counting_Alg1" {
-		if sd.LocalNode.Name == sd.ElectionExplorer.Initiator.Name {
-
-			*sd.Double_Counting1++
-		}
-	}
-	if apnt_message.Message.Msg == "Double_Counting_Alg2" {
-		if sd.LocalNode.Name == sd.ElectionExplorer.Initiator.Name {
-			*sd.Double_Counting2++
-
-			sd.Cluster_AP_Protocol.Appointments[apnt_message.Inviter.Name] = apnt_message
-		}
-	} else {
-
-		if sd.Local_Appointment.Time == 0 {
-
-			selected_neighbour := First_Apnt_negotiation(sd)
-			sd.Local_Appointment.Make_an_Appointment(apnt_message.Time, apnt_message.Inviter)
-			t_negotiationMessage := TimeNegotiation_Message(*sd)
-			sd.SendMesgToMember(apnt_message.Inviter, t_negotiationMessage)
-			sd.SendMesgToList(selected_neighbour, t_negotiationMessage)
-			sd.Local_AP_Protocol.Add_Appointment(*sd.Local_Appointment)
-			sd.Local_AP_Protocol.Recieved_Counter++
-
-			fmt.Println("recieved time: ", apnt_message.Time, "\tfrom : ", apnt_message.Inviter)
-			fmt.Println("after calculation time: ", sd.Local_Appointment.Time)
-			fmt.Println("Appointment Send To: ", selected_neighbour)
-
-			fmt.Println("negotiation: ", sd.Local_AP_Protocol.Appointments)
-
-			//if the recieved appointment time is the same as the local appointment time has, then should be ignored
-		} else if sd.Local_Appointment.Time != apnt_message.Time && TimeNegotiation_continuation_Check(*sd) {
-			{
-
-				// temp_neighbour := ChoosRand_Time_and_Neighbour(sd)
-				fmt.Println("Recieved time: ", apnt_message.Time, "from: ", apnt_message.Inviter)
-				// _, temp_neighbour := ChoosRand_Time_and_Neighbour(sd)
-				fmt.Println("Local time: ", sd.Local_Appointment.Time)
-
-				sd.Local_Appointment.Make_an_Appointment(apnt_message.Time, apnt_message.Inviter)
-				sd.Local_AP_Protocol.Add_Appointment(*sd.Local_Appointment)
-				sd.Local_AP_Protocol.Recieved_Counter++
-
-				t_negotiationMessage := TimeNegotiation_Message(*sd)
-				sd.SendMesgToMember(apnt_message.Inviter, t_negotiationMessage)
-				if _, ok := sd.Local_AP_Protocol.Rand_Selected_Neighbours[apnt_message.Inviter.Name]; ok {
-
-					sd.Local_AP_Protocol.Waited_Counter++
-				}
-
-				fmt.Println("new time: ", sd.Local_Appointment.Time)
-
-				fmt.Println("negotiation: ", sd.Local_AP_Protocol.Appointments)
-
-			}
-		} else if sd.Local_AP_Protocol.Waited_Counter == len(sd.Local_AP_Protocol.Rand_Selected_Neighbours) {
-			fmt.Println("Done----------I have negotiate with ->-------------: ", sd.Local_AP_Protocol.ToString())
-		}
-	}
-
-}
-
-func TimeNegotiation_continuation_Check(sd SyncerDelegate) bool {
-
-	if sd.Local_AP_Protocol.A_Max == sd.Local_AP_Protocol.Recieved_Counter {
-		return false
-	}
-	if sd.Local_AP_Protocol.Waited_Counter == len(sd.Local_AP_Protocol.Rand_Selected_Neighbours) {
-		return false
-	}
-	return true
-}
-
-func TimeNegotiation_Message(sd SyncerDelegate) Appointment {
-	temp := Appointment{}
-	temp = *sd.Local_Appointment
-	temp.Inviter = *sd.LocalNode
-
-	return temp
-}
-
-func First_Apnt_negotiation(sd *SyncerDelegate) map[string]memberlist.Node {
-
-	preferred_Time, temp_neighbour := ChoosRand_Time_and_Neighbour(sd)
-	sd.Local_Appointment.Clear()
-	sd.Local_Appointment.Create_Available_Time(preferred_Time, *sd.LocalNode)
-	sd.Local_AP_Protocol.CopyRandSelected_Neighbour(temp_neighbour)
-	fmt.Println("Selected Appointment Time: ", sd.Local_Appointment.Time)
-
-	return temp_neighbour
 }
 
 func ChoosRand_Time_and_Neighbour(sd *SyncerDelegate) (int, map[string]memberlist.Node) {
@@ -469,86 +370,6 @@ func echo_message_handling(msg []byte, sd *SyncerDelegate) {
 			}
 		}
 	}
-}
-
-func TestChannel(ch chan Message, sd *SyncerDelegate) {
-	test := 0
-	DoubleCountingAlg(*sd)
-	for test < 100 {
-		time.Sleep(1 * time.Second)
-		// DoubleCountingAlg(sd)
-
-		if *sd.Double_Counting1 == *sd.Double_Counting2 {
-			fmt.Println("Equal------------------------------------------: ", *sd.Double_Counting1, "    : ", *sd.Double_Counting2)
-			fmt.Println(sd.Cluster_AP_Protocol.ToString())
-			fmt.Println("gemeinsame Zeit: ", Check_if_Apnt_time_found(sd))
-
-			//check if an appointment is negotiated, if true send the appointment to all cluster node using echo
-			// if Check_if_Apnt_time_found(sd) {
-
-			// 	Send_Negotiated_time(sd, *sd.Local_Appointment)
-
-			// }
-
-			ch <- Message{}
-		}
-		if test%10 == 0 {
-			*sd.Double_Counting1 = 0
-			*sd.Double_Counting2 = 0
-			DoubleCountingAlg(*sd)
-
-		}
-		test++
-
-	}
-}
-
-func Send_Negotiated_time(sd *SyncerDelegate, a Appointment) {
-	a.Inviter = *sd.LocalNode
-	a.Message.Msg = "selected_time"
-	for _, neighbour := range sd.Neighbours.Neighbours {
-		sd.SendMesgToMember(neighbour, a)
-	}
-}
-
-func Check_if_Apnt_time_found(sd *SyncerDelegate) bool {
-	for _, time := range sd.Cluster_AP_Protocol.Appointments {
-		for _, time2 := range sd.Cluster_AP_Protocol.Appointments {
-			if time.Time != time2.Time {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func DoubleCountingAlg(sd SyncerDelegate) {
-	msg := Message{Msg: "Double_Counting_Alg1", Snder: sd.Node.LocalNode().Name}
-	Inform_Cluster_Node(*sd.EchoMessage, sd, msg)
-	// time.Sleep(1 * time.Second)
-	msg = Message{Msg: "Double_Counting_Alg2", Snder: sd.Node.LocalNode().Name}
-	Inform_Cluster_Node(*sd.EchoMessage, sd, msg)
-	// a_time := []int{1, 2, 3, 4, 6, 7, 8, 9}
-	// CreateAppointmentProtocol(*sd.LocalNode, 3, a_time)
-}
-
-//it call a function to choose a specific number of nods randomly.
-//and the selected member will be informed to start the appointment process.
-func Inform_Appointment_Process_Starter(sd *SyncerDelegate) {
-	appointment_starter := make(map[string]memberlist.Node)
-	starter_num := 3
-
-	apnt := Appointment{Message: Message{Msg: "start_appointment_process"}}
-
-	for i := 0; i < starter_num; {
-		randMem := ChoseRondomFromMap(sd.EchoMessage.EchoSenderList)
-		if _, ok := appointment_starter[randMem]; !ok {
-			appointment_starter[randMem] = *sd.EchoMessage.EchoSenderList[randMem]
-			i++
-		}
-	}
-
-	sd.SendMesgToList(appointment_starter, apnt)
 }
 
 func ChoseRondomFromMap(mp map[string]*memberlist.Node) string {
@@ -694,31 +515,6 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 		fmt.Println("I Have to Start Election Process Message to become coordinator +++++++++++++++++++++++++")
 		start_election(sd)
 
-	case "Double_Counting_Alg1":
-		fmt.Println(receivedMsg.Snder, "Double_Counting_Alg1       ", sd.LocalNode.Name)
-		// if sd.LocalNode.Name != sd.ElectionExplorer.Initiator.Name {
-
-		if !TimeNegotiation_continuation_Check(*sd) {
-
-			// appointment := Appointment{Message: Message{Msg: "Double_Counting_Alg1"}}
-			appointment := *sd.Local_Appointment
-			appointment.Message.Msg = "Double_Counting_Alg1"
-			appointment.Inviter = *sd.LocalNode
-			sd.SendMesgToMember(*sd.ElectionExplorer.Initiator, appointment)
-		}
-
-	case "Double_Counting_Alg2":
-		fmt.Println(receivedMsg.Snder, "Double_Counting_Alg2")
-
-		if !TimeNegotiation_continuation_Check(*sd) {
-			// coordinator := SearchMemberbyName(receivedMsg.Snder, sd.Node)
-			// msg := Message{Msg: "Double_Counting_Alg2"}
-			appointment := *sd.Local_Appointment
-			appointment.Inviter = *sd.LocalNode
-			appointment.Message.Msg = "Double_Counting_Alg2"
-			sd.SendMesgToMember(*sd.ElectionExplorer.Initiator, appointment)
-		}
-
 	case "Start_Req_Critical_Section":
 		//Criticle Section Access Request
 		// ch := make(chan int, 1)
@@ -726,17 +522,6 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 		Account_Access_Channel(sd)
 	}
 
-}
-
-func DoubleC(ch chan Message, sd SyncerDelegate) {
-
-	temp := Message{}
-	time.Sleep(3 * time.Second)
-	fmt.Printf("Send message %d\n", *sd.Double_Counting1)
-	// if *sd.Double_Counting == 0 {
-	temp.Msg = "Negotiation_finish"
-	// }
-	ch <- temp
 }
 
 func start_election(sd *SyncerDelegate) {

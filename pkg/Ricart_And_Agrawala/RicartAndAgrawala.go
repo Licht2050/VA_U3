@@ -2,6 +2,7 @@ package RicartAndAgrawala
 
 import (
 	"VAA_Uebung1/pkg/Cluster/Bank"
+	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"container/list"
 	"fmt"
 
@@ -9,20 +10,22 @@ import (
 )
 
 type RequesAccountAccess struct {
-	Req_Sender_Time LamportClock     `json:"lamport_time"`
-	Initator        *memberlist.Node `json:"req_ac_access_sender"`
-	Account         *Bank.Account    `json:"account"`
-	Sender          *memberlist.Node `json:"flooding_sender"`
+	Req_Sender_Time   Lamportclock.LamportClock `json:"req_sender_time"`
+	ReqInitiator_Time Lamportclock.LamportClock `json:"req_initiator_time"`
+	Initator          *memberlist.Node          `json:"req_ac_access_sender"`
+	Account           *Bank.Account             `json:"account"`
+	Sender            *memberlist.Node          `json:"flooding_sender"`
 }
 
 type AccountAccess_Acknowledge struct {
-	Ack_Sender_Time *LamportClock   `json:"ac_sender_lamport_time"`
-	Ack_Sender      memberlist.Node `json:"ack_to_ac_access_sender"`
-	ReqAA           Bank.Account    `json:"reqted_ac"`
-	Status          string          `json:"ack_status"`
+	Ack_Sender_Time Lamportclock.LamportClock `json:"ac_sender_lamport_time"`
+	Ack_Sender      memberlist.Node           `json:"ack_to_ac_access_sender"`
+	ReqAA           Bank.Account              `json:"reqted_ac"`
+	Status          string                    `json:"ack_status"`
 }
 
 type RicartAndAgrawala struct {
+	Sending_Req_Time     *Lamportclock.LamportClock
 	RequestQueue         *list.List
 	CurrentlyUsingR      *Bank.Account
 	Own_Rsource          *Bank.Account
@@ -92,25 +95,26 @@ func (ra *RicartAndAgrawala) Is_Interested(reqAccount1 Bank.Account, reqAccount2
 		ra.Own_Rsource.Account_Holder.Name == reqAccount1.Account_Holder.Name
 }
 
-func New_AccountAccess_Acknowledge(reqAC Bank.Account, ack_sender_time LamportClock,
+func New_AccountAccess_Acknowledge(reqAC Bank.Account, ack_sender_time Lamportclock.LamportClock,
 	ack_sender memberlist.Node, status string) AccountAccess_Acknowledge {
 
 	return AccountAccess_Acknowledge{
-		Ack_Sender_Time: &ack_sender_time,
+		Ack_Sender_Time: ack_sender_time,
 		Ack_Sender:      ack_sender,
 		ReqAA:           reqAC,
 		Status:          status,
 	}
 }
 
-func New_RequesAccountAccess(t LamportClock,
+func New_RequesAccountAccess(t Lamportclock.LamportClock,
 	sender memberlist.Node, account Bank.Account) *RequesAccountAccess {
 
 	return &RequesAccountAccess{
-		Req_Sender_Time: t,
-		Initator:        &sender,
-		Account:         &account,
-		Sender:          &sender,
+		ReqInitiator_Time: t,
+		Req_Sender_Time:   t,
+		Initator:          &sender,
+		Account:           &account,
+		Sender:            &sender,
 	}
 }
 
@@ -136,7 +140,7 @@ func (ra *RicartAndAgrawala) Queue_toString() string {
 	for element := ra.RequestQueue.Front(); element != nil; element = element.Next() {
 		temp := element.Value.(RequesAccountAccess)
 		out += fmt.Sprintf("\t\t\t\t\t\t\tRequest Initiator: \t%s\n\t\t\t\t\t\t\tSender Time: \t\t%d\n\t\t\t\t\t\t\tInterested Account: \t%s\n",
-			temp.Initator.Name, temp.Req_Sender_Time.GetTime(), temp.Account.Account_Holder.Name,
+			temp.Initator.Name, temp.ReqInitiator_Time.GetTime(), temp.Account.Account_Holder.Name,
 		)
 	}
 	out += "\n\n---------------------------------------------------------------End Queue---------------------------------------------------------------\n\n"
@@ -203,7 +207,7 @@ func (ra *RicartAndAgrawala) Remove_Old_Flooding_element() {
 func compaireFlooding_req(req1 RequesAccountAccess, req2 RequesAccountAccess) bool {
 	if req1.Initator.Name == req2.Initator.Name {
 		if req1.Account.Account_Holder.Name == req2.Account.Account_Holder.Name {
-			if req1.Req_Sender_Time.GetTime() == req2.Req_Sender_Time.GetTime() {
+			if req1.ReqInitiator_Time.GetTime() == req2.ReqInitiator_Time.GetTime() {
 				return true
 			}
 		}
@@ -217,7 +221,7 @@ func (ra *RicartAndAgrawala) Flooding_Queue_toString() string {
 	for element := ra.Flooding_Queue.Front(); element != nil; element = element.Next() {
 		temp := element.Value.(RequesAccountAccess)
 		out += fmt.Sprintf("\t\t\t\t\t\t\tRequest Initiator: \t%s Request sender: %s\n\t\t\t\t\t\t\tSender Time: \t\t%d\n\t\t\t\t\t\t\tInterested Account: \t%s\n",
-			temp.Initator.Name, temp.Sender.Name, temp.Req_Sender_Time.GetTime(), temp.Account.Account_Holder.Name,
+			temp.Initator.Name, temp.Sender.Name, temp.ReqInitiator_Time.GetTime(), temp.Account.Account_Holder.Name,
 		)
 	}
 	out += "\n\n---------------------------------------------------------------End Queue---------------------------------------------------------------\n\n"
