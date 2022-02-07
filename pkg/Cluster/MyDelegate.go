@@ -743,6 +743,7 @@ func sendExplorer(explorer *Election.ElectionExplorer, sd *SyncerDelegate) {
 
 	for _, neighbour := range sd.Neighbours.Neighbours {
 		if neighbour.Name != sd.ElectionExplorer.Initiator.Name {
+			fmt.Println("The Message Send Successfully +++++++++++++++++++++++++: ", neighbour.Name)
 			sd.SendMesgToMember(neighbour, explorer)
 		}
 	}
@@ -756,8 +757,8 @@ func ReadNeighbourFromDot(sd *SyncerDelegate) {
 
 		// if AddNodesToNeighbourList(g, sd) {
 		AddNodesToNeighbourList(g, sd)
-		body, _ := json.Marshal(sd.Neighbours)
-		sd.Node.SendBestEffort(sd.MasterNode, body)
+		// body, _ := json.Marshal(sd.Neighbours)
+		//sd.Node.SendBestEffort(sd.MasterNode, body)
 		// }
 	}
 }

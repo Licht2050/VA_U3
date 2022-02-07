@@ -5,13 +5,11 @@ graph ClusterNodes {
 		node [shape = circle];
 	Master -- Philisoph7
 	Master -- Philisoph1
-	Master -- Philisoph9
 	Philisoph1 -- Philisoph5
 	Philisoph1 -- Philisoph2
 	Philisoph1 -- Philisoph4
 	Philisoph1 -- Philisoph8
 	Philisoph2 -- Philisoph8
-	Philisoph2 -- Philisoph9
 	Philisoph2 -- Philisoph5
 	Philisoph3 -- Philisoph6
 	Philisoph3 -- Philisoph8
@@ -20,5 +18,5 @@ graph ClusterNodes {
 	Philisoph4 -- Philisoph6
 	Philisoph6 -- Philisoph7
 	Philisoph6 -- Philisoph8
-	Philisoph5 -- Philisoph9
+	
 }
