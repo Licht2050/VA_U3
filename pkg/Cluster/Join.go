@@ -6,6 +6,7 @@ import (
 	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
+	"VAA_Uebung1/pkg/Snapshot"
 	"encoding/base64"
 	"io/ioutil"
 	"log"
@@ -92,6 +93,10 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 
 	bank_account := create_Account(ml.LocalNode())
 
+	snapshot := Snapshot.NewChandy_Lamport()
+
+	sm_ac := Bank.NewSumAccount()
+
 	sd := &SyncerDelegate{
 		Node: ml, Neighbours: neigbours, NeighbourNum: &neigbourNum,
 		NodeList: nodeList, MasterNode: masterNode,
@@ -111,6 +116,8 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 		Account:              bank_account,
 		LamportTime:          lamportClock,
 		R_A_Algrth:           r_and_agra_algrthm,
+		Snapshot:             snapshot,
+		Sum_Account:          sm_ac,
 	}
 
 	sd.R_A_Algrth.Own_Rsource = &Bank.Account{Account_Holder: *sd.LocalNode}
@@ -131,7 +138,7 @@ func JoinCluster(nodeName, bindIP, bindPort, httpPort, clusterKey, knownIP strin
 
 	log.Printf("webserver is up. URL: http://%s:%s/ \n", bindIP, httpPort)
 
-	msg := Message{Msg: "I am a new Member", Snder: ml.LocalNode().Name, SendTime: time.Now()}
+	msg := Message{Msg: "I am a new Member", Snder: ml.LocalNode().Name, SendTime: *sd.LamportTime}
 	time.Sleep(time.Second * 2)
 	BroadcastClusterMessage(ml, &msg)
 

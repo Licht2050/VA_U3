@@ -6,22 +6,24 @@ import (
 	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
+	"VAA_Uebung1/pkg/Snapshot"
 	"bufio"
 	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/memberlist"
 )
 
 type Message struct {
-	Msg      string    `json:"msg"`
-	FilePath string    `json:"filepath"`
-	Snder    string    `json:"sender"`
-	Receiver string    `json:"receiver"`
-	SendTime time.Time `json:"send_time"`
+	Msg      string                    `json:"msg"`
+	FilePath string                    `json:"filepath"`
+	Snder    string                    `json:"sender"`
+	Receiver string                    `json:"receiver"`
+	SendTime Lamportclock.LamportClock `json:"send_time"`
 }
 
 type MenuEnum int
@@ -53,6 +55,7 @@ const (
 	ACCESS_ACCOUNT_ACKNOWLEDGE
 	ACCOUNT_NEGOTIATION
 	FREE_LOCK
+	ACCOUNT_INFO
 )
 
 const (
@@ -193,6 +196,14 @@ func Star_Account_Access_Process(sd *SyncerDelegate) {
 
 	//Choose randomly a member to access his account
 	randMember := One_Random_Member(sd)
+	for {
+		if randMember.Name == sd.Coordinator.Name {
+			randMember = One_Random_Member(sd)
+		} else {
+			break
+		}
+	}
+
 	interestedAccount := Bank.Account{Account_Holder: randMember}
 	sd.R_A_Algrth.Interested_Resource2 = &interestedAccount
 	sd.R_A_Algrth.Own_Rsource = sd.Account
@@ -206,7 +217,7 @@ func Star_Account_Access_Process(sd *SyncerDelegate) {
 	)
 
 	for _, m := range sd.Node.Members() {
-		if m.Name != sd.LocalNode.Name {
+		if m.Name != sd.LocalNode.Name && m.Name != sd.Coordinator.Name {
 			sd.R_A_Algrth.Add_Ack_Waited_Queue(*m)
 		}
 	}
@@ -218,11 +229,19 @@ func Star_Account_Access_Process(sd *SyncerDelegate) {
 func Req_Send_Per_Flooding(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerDelegate) {
 	//
 	for _, ne := range sd.Neighbours.Neighbours {
-		fmt.Printf("++++++++++++++++++++++++++++++ Ricard Agrawala send to: %s and lamport time: %d++++++++++++++++++++\n",
-			ne.Name, *sd.LamportTime,
-		)
+		if ne.Name != sd.Coordinator.Name {
 
-		sd.SendMesgToMember(ne, req)
+			fmt.Printf("++++++++++++++++++++++++++++++ Ricard Agrawala send to: %s and lamport time: %d++++++++++++++++++++\n",
+				ne.Name, *sd.LamportTime,
+			)
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go Send_UsingChannel_Snapshot(&wg, sd.Snapshot.Outgoing_Channel[ne.Name].C, ne, sd)
+			sd.Snapshot.Outgoing_Channel[ne.Name].C <- req
+
+			wg.Wait()
+			// sd.SendMesgToMember(ne, req)
+		}
 	}
 }
 
@@ -233,8 +252,8 @@ func Req_Send_To_Neighbours(req RicartAndAgrawala.RequesAccountAccess, sd *Synce
 
 		sd.R_A_Algrth.AddTo_Flooding_Queue(req)
 		for _, ne := range sd.Neighbours.Neighbours {
-			if ne.Name != req.Sender.Name && ne.Name != req.Initator.Name {
-				fmt.Printf("++++++++++++++++++++++++++++++ Req using flooding Alg send to: %s and local lamport time: %d++++++++++++++++++++\n",
+			if ne.Name != req.Sender.Name && ne.Name != req.Initator.Name && ne.Name != sd.Coordinator.Name {
+				fmt.Printf("\n\n\n++++++++++++++++++++++++++++++ Req using flooding Alg send to: %s and local lamport time: %d++++++++++++++++++++\n",
 					ne.Name, *sd.LamportTime,
 				)
 				sd.SendMesgToMember(ne, req)
@@ -335,4 +354,76 @@ func Clean_Lockal_Var(sd *SyncerDelegate) {
 	sd.R_A_Algrth.Interested_Resource2 = nil
 	sd.R_A_Algrth.AccInformation = false
 	sd.R_A_Algrth.Operation_Ack = false
+}
+
+func Send_UsingChannel_Snapshot(wg *sync.WaitGroup, ch chan interface{}, to memberlist.Node, sd *SyncerDelegate) {
+
+	//if the channel is not closed, then send req to memeber
+	if !sd.Snapshot.Outgoing_Channel[to.Name].Closed {
+
+		sd.SendMesgToMember(to, <-sd.Snapshot.Outgoing_Channel[to.Name].C)
+		wg.Done()
+	}
+}
+
+func Recieve_UsingChannel_Snapshot(wg *sync.WaitGroup, ch chan interface{},
+	sd *SyncerDelegate) {
+
+	recieved := <-ch
+	reqAA := recieved.(RicartAndAgrawala.RequesAccountAccess)
+
+	sd.LamportTime.Update(reqAA.Req_Sender_Time.GetTime())
+	reqAA.Req_Sender_Time = *sd.LamportTime
+
+	//Request Send per flooding alg to neighbours
+	//if the request is already recieved, then dont handle it
+	reqAA.Sender = sd.LocalNode
+	if Req_Send_To_Neighbours(reqAA, sd) {
+		//Recieve Access to Critical Section Request
+		request_account_access(reqAA, sd)
+	}
+
+	wg.Done()
+
+}
+
+func Snapshot_Init(members *memberlist.Memberlist, sd *SyncerDelegate) {
+	for _, mem := range members.Members() {
+		if mem.Name != sd.LocalNode.Name && mem.Name != sd.Coordinator.Name {
+			sd.Snapshot.Incommint_Channel[mem.Name] = Snapshot.Ch{C: make(chan interface{}), Closed: false}
+			sd.Snapshot.Outgoing_Channel[mem.Name] = Snapshot.Ch{C: make(chan interface{}), Closed: false}
+		}
+	}
+}
+
+func Send_SnapShotM_AsInitiator(sd *SyncerDelegate) {
+	sd.Snapshot.Message_recivied = true
+	message := Message{Msg: "Snapshot", Snder: sd.LocalNode.Name, SendTime: *sd.LamportTime}
+
+	for _, mem := range sd.Neighbours.Neighbours {
+		if mem.Name != sd.Coordinator.Name {
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go Send_UsingChannel_Snapshot(&wg, sd.Snapshot.Outgoing_Channel[mem.Name].C, mem, sd)
+			sd.Snapshot.Outgoing_Channel[mem.Name].C <- message
+			fmt.Println("Snapshot is sending: ")
+			wg.Wait()
+		}
+	}
+}
+
+//Die Snapshot nachricht wird an alle ausser der sender gesendet
+func Send_M(sd *SyncerDelegate, message Message) {
+	for _, mem := range sd.Neighbours.Neighbours {
+		if mem.Name != sd.Coordinator.Name {
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go Send_UsingChannel_Snapshot(&wg, sd.Snapshot.Outgoing_Channel[mem.Name].C, mem, sd)
+			sd.Snapshot.Outgoing_Channel[mem.Name].C <- message
+			fmt.Println("Snapshot is sending: ", mem.Name)
+			wg.Wait()
+		}
+	}
 }

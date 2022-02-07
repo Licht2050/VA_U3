@@ -11,9 +11,37 @@ import (
 
 var NEGATIV_MAX = -500
 
+type Sum_Account struct {
+	Account map[string]Account
+	Warning bool
+}
+
+func (sa *Sum_Account) Add(ac Account) {
+	if _, ok := sa.Account[ac.Account_Holder.Name]; ok {
+		return
+	}
+
+	sa.Account[ac.Account_Holder.Name] = ac
+}
+
+func NewSumAccount() *Sum_Account {
+	return &Sum_Account{
+		Account: make(map[string]Account),
+	}
+}
+
+func (sa *Sum_Account) Clear() {
+	sa.Account = make(map[string]Account)
+}
+
+type Account_Info struct {
+	Ac Account `json:"coordinator_info"`
+}
+
 type Account struct {
-	Account_Holder memberlist.Node `json:"account_holder"`
-	Balance        int             `json:"balance"`
+	Account_Holder  memberlist.Node `json:"account_holder"`
+	Balance         int             `json:"balance"`
+	Initial_Balance int             `json:"initial_balance"`
 	// Percentage     int             `json:"percentage"`
 }
 

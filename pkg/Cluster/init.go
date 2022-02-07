@@ -8,6 +8,7 @@ import (
 	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
+	"VAA_Uebung1/pkg/Snapshot"
 
 	"encoding/base64"
 	"encoding/json"
@@ -26,7 +27,7 @@ import (
 )
 
 // var file = "mygraph.dot"
-var file = "newGraph2.dot"
+var file = "newGraph.dot"
 var AVAILABLE_Appointment = []int{10, 13, 14, 15, 16, 17}
 var A_MAX = 3
 var AC_BALANCE_MAX = 100000
@@ -105,6 +106,10 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 	lamportClock := Lamportclock.NewLamportClock()
 	r_and_agra_algrthm := RicartAndAgrawala.New_R_and_A_Algrthm()
 
+	snapshot := Snapshot.NewChandy_Lamport()
+
+	sm_ac := Bank.NewSumAccount()
+
 	//register all var to syncerdelegate
 	sd := &SyncerDelegate{
 		Node: ml, Neighbours: neigbours, NeighbourNum: &neigbourNum,
@@ -127,6 +132,8 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 		Account:              bank_account,
 		LamportTime:          lamportClock,
 		R_A_Algrth:           r_and_agra_algrthm,
+		Snapshot:             snapshot,
+		Sum_Account:          sm_ac,
 	}
 
 	sd.R_A_Algrth.Own_Rsource = &Bank.Account{Account_Holder: *sd.LocalNode}
@@ -185,6 +192,66 @@ func InitCluster(nodeName, bindIP, bindPort, httpPort string) {
 	// 	err_st.Err = err
 	// 	Check(err_st)
 	// }
+}
+
+func Take_Snapshot(ch chan int, sd *SyncerDelegate) {
+	for {
+
+		if sd.LamportTime.GetTime() > 0 {
+			sleepTime := rand.Intn(10)
+			message := Message{Msg: "Shot", SendTime: *sd.LamportTime, Snder: sd.LocalNode.Name, Receiver: strconv.Itoa(sleepTime)}
+			sd.SendMesgToMember(*sd.Coordinator, message)
+			time.Sleep(time.Duration(sleepTime+5) * time.Second)
+			if !sd.Snapshot.Snapshot_Start {
+				fmt.Println("Snapshot is token: #############################################################################################################################################")
+				sd.Snapshot.Snapshot_Start = true
+				sd.Snapshot.Snapshot_Time = sd.LamportTime
+				Send_SnapShotM_AsInitiator(sd)
+			} else {
+				fmt.Println("Before All Channel is closed")
+				if IsChannel_Closed(sd) {
+					fmt.Println("All Channel is closed")
+					Snapshot_Init(sd.Node, sd)
+					sd.Snapshot.Snapshot_Start = false
+					sd.Snapshot.Message_recivied = false
+
+					SendAccountInfo_to_Coordinator(sd)
+
+					if sd.LocalNode.Name != sd.Coordinator.Name {
+						Account_Access_Channel(sd)
+					}
+				}
+			}
+		}
+	}
+
+}
+
+func SendAccountInfo_to_Coordinator(sd *SyncerDelegate) {
+	ac := Bank.Account_Info{Ac: Bank.Account{Account_Holder: *sd.LocalNode, Balance: sd.Account.Balance, Initial_Balance: sd.Account.Initial_Balance}}
+	sd.SendMesgToMember(*sd.Coordinator, ac)
+}
+
+func IsChannel_Closed(sd *SyncerDelegate) bool {
+	for ch := range sd.Snapshot.Incommint_Channel {
+		if !sd.Snapshot.Incommint_Channel[ch].Closed {
+			if ifNeighbour(ch, sd) {
+				fmt.Println("Channel ist not closed: ", ch)
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func ifNeighbour(name string, sd *SyncerDelegate) bool {
+	for _, mem := range sd.Neighbours.Neighbours {
+		if name == mem.Name {
+			fmt.Println("Neibour equal: ", name)
+			return true
+		}
+	}
+	return false
 }
 
 //this create account, randomly charge the account balance and return pointer.

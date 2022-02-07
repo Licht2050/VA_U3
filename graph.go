@@ -1,112 +1,106 @@
 package main
 
 import (
-	"container/list"
 	"fmt"
-	"sync/atomic"
-	"time"
+	"sync"
 )
 
-type LamportClock struct {
-	lamport_time uint64
+type M struct {
+	Ch chan interface{}
 }
 
-func NewLamportClock() *LamportClock {
-	return &LamportClock{lamport_time: 0}
+type Test struct {
+	Ch map[string]M
 }
 
-//Return the current value of the lamport clock
-func (lc *LamportClock) GetTime() uint64 {
-	return lc.lamport_time
-}
+func Sen(ch chan interface{}, str string, list map[string]int, wg *sync.WaitGroup) {
 
-// Increment is used to increment and return the value of the lamport clock
-func (l *LamportClock) Increment() uint64 {
-	return atomic.AddUint64(&l.lamport_time, 1)
-}
+	test1 := <-ch
+	list[str] = test1.(int)
+	fmt.Println("Inside function: ", test1.(int))
 
-//This updates the local clock if necessary after
-//a clock value received from another process
-func (lc *LamportClock) Update(v uint64) {
-	// If the other value is old, we do not need to do anything
-	cur := atomic.LoadUint64(&lc.lamport_time)
-	other := uint64(v)
-	if other < cur {
-		return
-	}
-
-	atomic.SwapUint64(&lc.lamport_time, other+1)
-}
-
-func contain(queue *list.List, lc LamportClock) (bool, *LamportClock) {
-	for e := queue.Front(); e != nil; e = e.Next() {
-		temp := e.Value.(*LamportClock)
-		if *temp == lc {
-			return true, e.Value.(*LamportClock)
-		}
-		// fmt.Println(e.Value)
-	}
-
-	return false, &LamportClock{}
-}
-
-func test(ch chan int) {
-	i := 0
-	for i < 10 {
-		time.Sleep(1 * time.Second)
-
-		fmt.Println("Test time: ", i)
-
-		if i == 5 {
-			ch <- 10
-			break
-		}
-		i++
-	}
+	wg.Done()
 
 }
 
 func main() {
-	// lc := NewLamportClock()
-	// lc1 := NewLamportClock()
 
-	// lc1.Increment()
-	// lc1.Increment()
+	ch := new(Test)
+	ch.Ch = make(map[string]M)
+	ch.Ch["new"] = M{Ch: make(chan interface{})}
 
-	// fmt.Println(lc.GetTime())
-
-	// lc.Update(lc1.GetTime())
-	// fmt.Println(lc.GetTime())
-
-	// queue := list.New()
-
-	// queue.PushBack(*lc)
-	// queue.PushBack(*lc1)
-
-	// // fmt.Println(contain(queue, *lc1))
-	// // queue.PushBack(lc1)
-
-	// for queue.Len() > 0 {
-	// 	test := queue.Front().Value.(LamportClock)
-	// 	fmt.Println(test.GetTime())
-
-	// 	queue.Remove(queue.Front())
-	// }
-	ch := make(chan int, 1)
-
-	go test(ch)
-
-	v := <-ch
-
-	if v == 10 {
-		fmt.Println("Gooooooooooooooooooooooooooooooooooooooooooooo")
-	}
-
-	i := 0
-	for i < 10 {
-		fmt.Println("Main: ", i)
-		time.Sleep(1 * time.Second)
-		i++
-	}
-
+	var wg sync.WaitGroup
+	list := make(map[string]int)
+	wg.Add(1)
+	go Sen(ch.Ch["new"].Ch, "Hello", list, &wg)
+	ch.Ch["new"].Ch <- 88
+	wg.Wait()
+	fmt.Println(list["Hello"])
 }
+
+
+
+case REQUEST_ACCOUNT_ACCESS:
+	reqAA := RicartAndAgrawala.RequesAccountAccess{}
+	err := json.Unmarshal(msg, &reqAA)
+	_ = err
+
+	fmt.Println("Recieved Req")
+
+	var wg sync.WaitGroup
+	sender := reqAA.Sender.Name
+	if !sd.Snapshot.Incommint_Channel[sender].Closed {
+		wg.Add(1)
+		go Recieve_UsingChannel_Snapshot(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+		sd.Snapshot.Incommint_Channel[sender].C <- reqAA
+		wg.Wait()
+	}
+case ACCESS_ACCOUNT_ACKNOWLEDGE:
+	ackAA := RicartAndAgrawala.AccountAccess_Acknowledge{}
+	err := json.Unmarshal(msg, &ackAA)
+	_ = err
+
+	var wg sync.WaitGroup
+	sender := ackAA.Ack_Sender.Name
+	fmt.Println("Acknowledge ========================== received from :", sender)
+	if !sd.Snapshot.Incommint_Channel[sender].Closed {
+		wg.Add(1)
+
+		go recieved_access_acknowledge(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+		sd.Snapshot.Incommint_Channel[sender].C <- ackAA
+
+		wg.Wait()
+	}
+
+case ACCOUNT_NEGOTIATION:
+
+	ac_Negotiation := Bank.Account_Message{}
+	err := json.Unmarshal(msg, &ac_Negotiation)
+	_ = err
+
+	var wg sync.WaitGroup
+	sender := ac_Negotiation.Sender.Name
+	if !sd.Snapshot.Incommint_Channel[sender].Closed {
+		wg.Add(1)
+
+		go account_Negotiation(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+		sd.Snapshot.Incommint_Channel[sender].C <- ac_Negotiation
+
+		wg.Wait()
+	}
+
+case FREE_LOCK:
+	ac_operation_ack := Bank.Account_Operation_Ack{}
+	err := json.Unmarshal(msg, &ac_operation_ack)
+	_ = err
+
+	fmt.Println("*********************************** Free_Lock Message is recieved ***************************")
+	var wg sync.WaitGroup
+	sender := ac_operation_ack.Sender.Name
+	if !sd.Snapshot.Incommint_Channel[sender].Closed {
+		wg.Add(1)
+
+		go lock_handling(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+		sd.Snapshot.Incommint_Channel[sender].C <- ac_operation_ack
+		wg.Wait()
+	}

@@ -21,7 +21,7 @@ type AccountAccess_Acknowledge struct {
 	Ack_Sender_Time Lamportclock.LamportClock `json:"ac_sender_lamport_time"`
 	Ack_Sender      memberlist.Node           `json:"ack_to_ac_access_sender"`
 	ReqAA           Bank.Account              `json:"reqted_ac"`
-	Status          string                    `json:"ack_status"`
+	Status          string                    `json:"ack_status_special"`
 }
 
 type RicartAndAgrawala struct {

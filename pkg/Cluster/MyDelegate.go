@@ -7,12 +7,14 @@ import (
 	Lamportclock "VAA_Uebung1/pkg/LamportClock"
 	"VAA_Uebung1/pkg/Neighbour"
 	RicartAndAgrawala "VAA_Uebung1/pkg/Ricart_And_Agrawala"
+	"VAA_Uebung1/pkg/Snapshot"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/memberlist"
@@ -29,6 +31,7 @@ type SyncerDelegate struct {
 	Graph            *Graph.Graph
 	RumorsList       *RumorsList
 	ElectionExplorer *Election.ElectionExplorer
+	Coordinator      *memberlist.Node
 	EchoMessage      *Election.Echo
 	RingMessage      *Election.RingMessage
 	EchoCounter      *int
@@ -47,6 +50,9 @@ type SyncerDelegate struct {
 	//Ricart and Agrawala Algorithm
 	LamportTime *Lamportclock.LamportClock
 	R_A_Algrth  *RicartAndAgrawala.RicartAndAgrawala
+	Snapshot    *Snapshot.Chandy_Lamport
+
+	Sum_Account *Bank.Sum_Account
 }
 
 //compare the incoming byte message to structs
@@ -74,7 +80,7 @@ func CompareJson(msg []byte) int {
 		if key == "req_initiator_time" {
 			return REQUEST_ACCOUNT_ACCESS
 		}
-		if key == "ack_status" {
+		if key == "ack_status_special" {
 			return ACCESS_ACCOUNT_ACKNOWLEDGE
 		}
 		if key == "access_seekers" {
@@ -82,6 +88,9 @@ func CompareJson(msg []byte) int {
 		}
 		if key == "free-lock" {
 			return FREE_LOCK
+		}
+		if key == "coordinator_info" {
+			return ACCOUNT_INFO
 		}
 	}
 	return MESSAGE
@@ -111,41 +120,133 @@ func (sd *SyncerDelegate) NotifyMsg(msg []byte) {
 		neighbour_info_message_handling(sd, msg)
 
 	case REQUEST_ACCOUNT_ACCESS:
+
 		reqAA := RicartAndAgrawala.RequesAccountAccess{}
 		err := json.Unmarshal(msg, &reqAA)
 		_ = err
 
-		fmt.Println("Recieved Req")
-
-		sd.LamportTime.Update(reqAA.Req_Sender_Time.GetTime())
-		reqAA.Req_Sender_Time = *sd.LamportTime
-
-		//Request Send per flooding alg to neighbours
-		//if the request is already recieved, then dont handle it
-		reqAA.Sender = sd.LocalNode
-		if Req_Send_To_Neighbours(reqAA, sd) {
-			//Recieve Access to Critical Section Request
-			request_account_access(reqAA, sd)
+		var wg sync.WaitGroup
+		sender := reqAA.Sender.Name
+		// fmt.Println("Req recieved:------------------------------- ", sd.Snapshot.Incommint_Channel[sender].Closed)
+		if !sd.Snapshot.Incommint_Channel[sender].Closed && !sd.Snapshot.Snapshot_Start {
+			wg.Add(1)
+			go Recieve_UsingChannel_Snapshot(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+			sd.Snapshot.Incommint_Channel[sender].C <- reqAA
+			wg.Wait()
+		} else if !sd.Snapshot.Incommint_Channel[sender].Closed && sd.Snapshot.Snapshot_Start {
+			if sd.Snapshot.Snapshot_Time.GetTime() > reqAA.ReqInitiator_Time.GetTime() {
+				wg.Add(1)
+				go Recieve_UsingChannel_Snapshot(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+				sd.Snapshot.Incommint_Channel[sender].C <- reqAA
+				wg.Wait()
+			}
 		}
-
 	case ACCESS_ACCOUNT_ACKNOWLEDGE:
 
-		recieved_access_acknowledge(msg, sd)
+		ackAA := RicartAndAgrawala.AccountAccess_Acknowledge{}
+		err := json.Unmarshal(msg, &ackAA)
+		_ = err
+
+		sender := ackAA.Ack_Sender.Name
+		// fmt.Println("Akcnowledge recieved:-------------------------------: ", sd.Snapshot.Incommint_Channel[sender].Closed)
+		if !sd.Snapshot.Incommint_Channel[sender].Closed && !sd.Snapshot.Snapshot_Start {
+
+			recieved_access_acknowledge(ackAA, sd)
+
+		} else if !sd.Snapshot.Incommint_Channel[sender].Closed && sd.Snapshot.Snapshot_Start {
+			if sd.Snapshot.Snapshot_Time.GetTime() > ackAA.Ack_Sender_Time.GetTime() {
+				recieved_access_acknowledge(ackAA, sd)
+			}
+		}
 
 	case ACCOUNT_NEGOTIATION:
 
-		account_Negotiation(msg, sd)
+		ac_Negotiation := Bank.Account_Message{}
+		err := json.Unmarshal(msg, &ac_Negotiation)
+		_ = err
+
+		var wg sync.WaitGroup
+		sender := ac_Negotiation.Sender.Name
+		if !sd.Snapshot.Incommint_Channel[sender].Closed && !sd.Snapshot.Snapshot_Start {
+			wg.Add(1)
+
+			go account_Negotiation(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+			sd.Snapshot.Incommint_Channel[sender].C <- ac_Negotiation
+
+			wg.Wait()
+		} else if !sd.Snapshot.Incommint_Channel[sender].Closed && sd.Snapshot.Snapshot_Start {
+			if sd.Snapshot.Snapshot_Time.GetTime() > ac_Negotiation.Sender_Time.GetTime() {
+				wg.Add(1)
+
+				go account_Negotiation(&wg, sd.Snapshot.Incommint_Channel[sender].C, sd)
+				sd.Snapshot.Incommint_Channel[sender].C <- ac_Negotiation
+
+				wg.Wait()
+			}
+		}
 
 	case FREE_LOCK:
+		ac_operation_ack := Bank.Account_Operation_Ack{}
+		err := json.Unmarshal(msg, &ac_operation_ack)
+		_ = err
 		fmt.Println("*********************************** Free_Lock Message is recieved ***************************")
-		lock_handling(msg, sd)
+
+		sender := ac_operation_ack.Sender.Name
+		if !sd.Snapshot.Incommint_Channel[sender].Closed && !sd.Snapshot.Snapshot_Start {
+			lock_handling(ac_operation_ack, sd)
+		} else if !sd.Snapshot.Incommint_Channel[sender].Closed && sd.Snapshot.Snapshot_Start {
+			if sd.Snapshot.Snapshot_Time.GetTime() > ac_operation_ack.Sender_Time.GetTime() {
+				lock_handling(ac_operation_ack, sd)
+			}
+		}
+
+	case ACCOUNT_INFO:
+		ac_info := Bank.Account_Info{}
+		err := json.Unmarshal(msg, &ac_info)
+		_ = err
+		if sd.LocalNode.Name == sd.Coordinator.Name {
+			sd.Sum_Account.Add(ac_info.Ac)
+			fmt.Println("Account: ", ac_info.Ac)
+			num_cluster_member := len(sd.Node.Members()) - 1
+			if len(sd.Sum_Account.Account) == num_cluster_member {
+				fmt.Println("Anzahl len: ", len(sd.Sum_Account.Account))
+				if ifSysBalance_not_goot(*sd.Sum_Account) {
+					SendWarning(sd)
+				}
+				sd.Sum_Account = Bank.NewSumAccount()
+			}
+		}
 	}
 }
 
-func lock_handling(msg []byte, sd *SyncerDelegate) {
-	ac_operation_ack := Bank.Account_Operation_Ack{}
-	err := json.Unmarshal(msg, &ac_operation_ack)
-	_ = err
+func SendWarning(sd *SyncerDelegate) {
+	message := Message{Msg: "Warning", Snder: sd.LocalNode.Name}
+
+	for _, ne := range sd.Neighbours.Neighbours {
+		sd.SendMesgToMember(ne, message)
+	}
+}
+
+func ifSysBalance_not_goot(ac Bank.Sum_Account) bool {
+	initial_amount := 0
+	new_amount := 0
+	for _, acc := range ac.Account {
+		initial_amount += acc.Initial_Balance
+		new_amount += acc.Balance
+	}
+
+	fmt.Printf("\n------------------ Initial System Amount: %d\n", initial_amount)
+	fmt.Printf("------------------ New Amount: %d\n\n", new_amount)
+
+	// percent will send warning
+	if new_amount != initial_amount {
+		return true
+	}
+	return true
+}
+
+func lock_handling(ac_operation_ack Bank.Account_Operation_Ack, sd *SyncerDelegate) {
+
 	sd.R_A_Algrth.AccInformation = true
 
 	sd.LamportTime.Update(ac_operation_ack.Sender_Time.GetTime())
@@ -164,22 +265,22 @@ func lock_handling(msg []byte, sd *SyncerDelegate) {
 	}
 }
 
-func account_Negotiation(msg []byte, sd *SyncerDelegate) {
-	ac_Negotiation := Bank.Account_Message{}
-	err := json.Unmarshal(msg, &ac_Negotiation)
-	_ = err
+func account_Negotiation(wg *sync.WaitGroup, ch chan interface{},
+	sd *SyncerDelegate) {
+
+	recived := <-ch
+	ac_Negotiation := recived.(Bank.Account_Message)
 
 	sd.LamportTime.Update(ac_Negotiation.Sender_Time.GetTime())
 
 	// acoountChannel := make(chan Bank.Account_Message, 1)
 	Change_Account_Amount(ac_Negotiation, sd)
 	// acoountChannel <- ac_Negotiation
+	wg.Done()
 }
 
-func recieved_access_acknowledge(msg []byte, sd *SyncerDelegate) {
-	ackAA := RicartAndAgrawala.AccountAccess_Acknowledge{}
-	err := json.Unmarshal(msg, &ackAA)
-	_ = err
+func recieved_access_acknowledge(ackAA RicartAndAgrawala.AccountAccess_Acknowledge, sd *SyncerDelegate) {
+
 	fmt.Printf("------------------------------Acknowledge Recieved from : \"%s Sender Time: %d\"------------------------------\n", ackAA.Ack_Sender.Name, ackAA.Ack_Sender_Time.GetTime())
 	sd.LamportTime.Update(ackAA.Ack_Sender_Time.GetTime())
 	acknowledge_Handling(ackAA, sd)
@@ -217,7 +318,7 @@ func acknowledge_Handling(ack RicartAndAgrawala.AccountAccess_Acknowledge, sd *S
 		}
 	}
 
-	time.Sleep(1 * time.Microsecond)
+	// time.Sleep(1 * time.Microsecond)
 
 	//print the Waited_for_Ack_Queue
 	for _, m := range sd.R_A_Algrth.Ack_Waited_Queue {
@@ -239,7 +340,14 @@ func send_AcA_Acknowledge(req RicartAndAgrawala.RequesAccountAccess, sd *SyncerD
 	fmt.Printf("\t\t\t\t\t\tAcknowledge Send To: \"%s\", for Access to \"%s's and %s's\" Accounts\n\n",
 		req.Initator.Name, req.Account.Account_Holder.Name, req.Initator.Name)
 
-	sd.SendMesgToMember(*req.Initator, ack)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go Send_UsingChannel_Snapshot(&wg, sd.Snapshot.Outgoing_Channel[req.Initator.Name].C, *req.Initator, sd)
+	sd.Snapshot.Outgoing_Channel[req.Initator.Name].C <- ack
+
+	wg.Wait()
+
+	// sd.SendMesgToMember(*req.Initator, ack)
 }
 
 //Request handling
@@ -362,6 +470,7 @@ func echo_message_handling(msg []byte, sd *SyncerDelegate) {
 				fmt.Println("I am the Coordinator and i Recieved From : ", sd.EchoMessage.EchoSenderList)
 				msg := Message{Msg: "Iam_the_Coordinator", Snder: sd.Node.LocalNode().Name}
 				Inform_Cluster_Node(*sd.EchoMessage, *sd, msg)
+				sd.Coordinator = sd.LocalNode
 				time.Sleep(2 * time.Second)
 
 				// Inform_Appointment_Process_Starter(sd)
@@ -500,6 +609,8 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 		fmt.Println("Message : ", receivedMsg.Msg, "Coordinator: ", receivedMsg.Snder)
 		coordinator := SearchMemberbyName(receivedMsg.Snder, sd.Node)
 		sd.ElectionExplorer.Initiator = coordinator
+		sd.Coordinator = coordinator
+
 		sd.Local_AP_Protocol.Start_Value()
 		sd.Local_Appointment.Clear()
 	case "leave":
@@ -516,10 +627,70 @@ func Message_Handling(msg []byte, sd *SyncerDelegate) {
 		start_election(sd)
 
 	case "Start_Req_Critical_Section":
+		sd.Account.Initial_Balance = sd.Account.Balance
+		Snapshot_Init(sd.Node, sd)
+		//snapshot will start after random time between 5 to 15
+		ch := make(chan int)
+		go Take_Snapshot(ch, sd)
 		//Criticle Section Access Request
 		// ch := make(chan int, 1)
 		// go Account_Access_Channel(ch, sd)
-		Account_Access_Channel(sd)
+		if sd.LocalNode.Name != sd.Coordinator.Name {
+			Account_Access_Channel(sd)
+		}
+
+	case "Snapshot":
+		fmt.Println("Snapshot recieved -------------------------------------------------------------------------------------------from : ", receivedMsg.Snder)
+		sd.Snapshot.Snapshot_Time = &receivedMsg.SendTime
+		sd.Snapshot.Snapshot_Start = true
+		sender := receivedMsg.Snder
+
+		if sd.Snapshot.Message_recivied {
+
+			receivedMsg.Snder = sd.LocalNode.Name
+			var wg sync.WaitGroup
+			if !sd.Snapshot.Incommint_Channel[sender].Closed {
+				for _, mem := range sd.Neighbours.Neighbours {
+					if mem.Name == sender {
+						wg.Add(1)
+						go Send_UsingChannel_Snapshot(&wg, sd.Snapshot.Outgoing_Channel[sender].C, mem, sd)
+						sd.Snapshot.Outgoing_Channel[sender].C <- receivedMsg
+						fmt.Println("Snapshot is sending: ", sender)
+						wg.Wait()
+					}
+				}
+				fmt.Println("Closed channel: ", receivedMsg.Snder)
+				sd.Snapshot.Incommint_Channel[sender] = Snapshot.Ch{C: make(chan interface{}), Closed: true}
+			}
+		} else {
+			sd.Snapshot.Message_recivied = true
+
+			receivedMsg.Snder = sd.LocalNode.Name
+			Send_M(sd, receivedMsg)
+
+			sd.Snapshot.Incommint_Channel[sender] = Snapshot.Ch{C: make(chan interface{}), Closed: true}
+			fmt.Println("Closed channel: ", sender)
+
+		}
+	case "Shot":
+
+		fmt.Printf("Snapshot Sender: %s Snapshot Time: %s\n", receivedMsg.Snder, receivedMsg.Receiver)
+
+	case "Warning":
+
+		if !sd.Sum_Account.Warning {
+			fmt.Printf("\n\n\n\n\n\n-------------------------Warning received from : %s", receivedMsg.Snder)
+			fmt.Printf("\n\n\n\n\n\n------------------------- Warning System Amount is not stable!!!!!-----------------------------\n\n\n\n\n")
+			sd.Sum_Account.Warning = true
+			for _, ne := range sd.Neighbours.Neighbours {
+				if ne.Name != sd.Coordinator.Name && ne.Name != receivedMsg.Snder {
+					receivedMsg.Snder = sd.LocalNode.Name
+					sd.SendMesgToMember(ne, receivedMsg)
+					fmt.Printf("\n\n\n\n\n\n-------------------------Warning Send forword to : %s\n\n\n\n\n\n", ne.Name)
+				}
+
+			}
+		}
 	}
 
 }
