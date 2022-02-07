@@ -1,12 +1,13 @@
 # VAA_Uebung3
 
-
+- **This Programm let the process to access the critical section.**
+- **It also let the process to take a snapshot**
 - The following program start a cluster with master and n worker nodes(Philisoph"$n")
-- Each node first randomly selects neighbors and sends information about them to the master node.
 - The master node allows the user to print all nodes with neighbors.
 - The master node also allows the user to start sending rumors. and each node sends the rumors to its neighbors if it receives it for the first time.
 - The user can also print information about neighboring nodes as a directed graph. it can be printed to stdr, write it to a ".dot" file, or save it as a "png" file.
 - In addition, the Master node allows the user to create an undirected graph.
+
 
 ## How to Start the Program:
 
@@ -27,12 +28,14 @@
     **./start 10**
 
 
-The program start master and worker(philisoph) nodes in a new tabs. each node shows the cycle of coordinator election and appointment negotiation. 
+The program start master and worker(philisoph) nodes in a new tabs. each node shows the cycle of coordinator election, the process of accessing the critical section and taking a snapshot.
 
 A menu appears on the master node 10 seconds after the cluster starts, which can help you get more information about the cluster.
 
 
 ## Important. 
-To start the election, in Master tap, neighbors of the cluster member must be read from a "Graph.dot" file. this could be done by giving "9" to the terminal. in the root folder there is a file "mygraph.dot", which will be read by default. it could be replaced in "/Cluster/init.go file" in a global var called "file"
+To start the election, in Master tap, neighbors of the cluster member must be read from a "Graph.dot" file. this could be done by giving "9" to the terminal in master process. in the root folder there is a file "newGraph.dot", which will be read by default. it could be replaced in "/Cluster/init.go file" in a global var called "file"
 
-To modify the available time and A_Max you can also replace in this path: "/Cluster/init.go file"
+<!--To start getting access to the critical section could be done by giving "12" which shown as "Richart Agrawala Alorithm",-->
+
+To start the Snapshot algorithm and Ricard Agrawala, after the process has read their neighbors, must also go through the coordinator selection process. The coordinator selection process could be done by giving "3" to the terminal in Master process.
