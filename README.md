@@ -1,7 +1,7 @@
 # VAA_Uebung3
 
-- **This Programm let the process to access the critical section.**
-- **It also let the process to take a snapshot**
+- **This program provides access to  the critical section.**
+- **It also shows the snapshot algorithm**
 - The following program start a cluster with master and n worker nodes(Philisoph"$n")
 - The master node allows the user to print all nodes with neighbors.
 - The master node also allows the user to start sending rumors. and each node sends the rumors to its neighbors if it receives it for the first time.
